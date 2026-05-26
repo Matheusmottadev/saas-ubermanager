@@ -2840,30 +2840,30 @@ function CorridasPage(props: {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 xl:grid-cols-[max-content_minmax(0,1fr)] xl:items-center">
+      <div className="grid gap-3 xl:grid-cols-[max-content_minmax(0,1fr)] xl:items-stretch">
         <PlatformTabs current={props.corridasFilter} onChange={props.onFilterChange} visiblePlatforms={props.visiblePlatforms} />
-        <SurfaceCard className="p-3">
-          <div className="flex flex-wrap items-end gap-2.5 xl:justify-end">
-            <div className="flex items-center gap-2 pb-1">
+        <SurfaceCard className="h-[66px] p-2">
+          <div className="flex h-full flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end">
+            <div className="flex shrink-0 items-center gap-2 px-1">
               <div className="text-sm font-semibold text-white">Régua de status</div>
               <InfoTooltip
                 text={`A régua de ${filterLabel} usa R$/km. Abaixo do mínimo a corrida fica ruim, acima do máximo ela fica excelente e, entre os dois, aparece como ok.`}
               />
             </div>
-            <label className="flex min-w-[150px] flex-col gap-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Ruim abaixo de</span>
+            <label className="min-w-[140px] flex-1 xl:max-w-[170px]">
               <input
-                className="h-10 rounded-[0.95rem] border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none transition focus:border-white/20"
+                className="h-9 w-full rounded-[0.95rem] border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none transition placeholder:text-neutral-500 focus:border-white/20"
+                placeholder="Ruim abaixo de"
                 step="0.1"
                 type="number"
                 value={badBelowDraft}
                 onChange={(event) => setBadBelowDraft(event.target.value)}
               />
             </label>
-            <label className="flex min-w-[150px] flex-col gap-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Bom acima de</span>
+            <label className="min-w-[140px] flex-1 xl:max-w-[170px]">
               <input
-                className="h-10 rounded-[0.95rem] border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none transition focus:border-white/20"
+                className="h-9 w-full rounded-[0.95rem] border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none transition placeholder:text-neutral-500 focus:border-white/20"
+                placeholder="Bom acima de"
                 step="0.1"
                 type="number"
                 value={goodAboveDraft}
@@ -2871,7 +2871,7 @@ function CorridasPage(props: {
               />
             </label>
             <button
-              className="h-10 rounded-xl bg-[#f5f4f0] px-3.5 text-sm font-semibold text-black transition hover:opacity-90"
+              className="h-9 shrink-0 rounded-xl bg-[#f5f4f0] px-3.5 text-sm font-semibold text-black transition hover:opacity-90"
               type="button"
               onClick={() =>
                 props.onSaveQualityThresholds(props.corridasFilter, {
