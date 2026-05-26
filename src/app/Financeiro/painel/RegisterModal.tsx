@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { platformMeta, platformOrder, type PlatformKey } from "./data";
-import { saoPauloNeighborhoods } from "@/lib/sp-neighborhoods";
+import { brazilLocationSuggestions } from "@/lib/brazil-location-suggestions";
 
 type RegisterMode = "corrida" | "diario";
 
@@ -12,6 +12,7 @@ type RegisterRideDraft = {
   destination: string;
   end: string;
   id: string;
+  idleAfter: string;
   km: string;
   obs: string;
   origin: string;
@@ -31,7 +32,6 @@ type DailySummaryDraft = {
 
 export type RegisterModalPayload =
   | {
-      idleTime: string;
       mode: "corrida";
       rides: RegisterRideDraft[];
     }
@@ -46,6 +46,7 @@ function createEmptyRide(): RegisterRideDraft {
     destination: "",
     end: "",
     id: Math.random().toString(36).slice(2),
+    idleAfter: "",
     km: "",
     obs: "",
     origin: "",
@@ -114,8 +115,10 @@ function NeighborhoodField(props: {
   const normalizedInput = normalizeSuggestionText(props.value);
   const suggestions =
     normalizedInput.length >= 2
-      ? saoPauloNeighborhoods
-          .filter((item) => normalizeSuggestionText(item).includes(normalizedInput))
+      ? brazilLocationSuggestions
+          .filter((item) =>
+            normalizeSuggestionText(`${item.label} ${item.city} ${item.state}`).includes(normalizedInput),
+          )
           .slice(0, 6)
       : [];
 
@@ -132,13 +135,16 @@ function NeighborhoodField(props: {
         <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-[0.95rem] border border-white/10 bg-[#1a1a1a] shadow-2xl">
           {suggestions.map((suggestion) => (
             <button
-              key={`${props.label}-${suggestion}`}
-              className="flex w-full items-center px-3.5 py-2.5 text-left text-sm text-neutral-300 transition hover:bg-white/5 hover:text-white"
+              key={`${props.label}-${suggestion.label}-${suggestion.city}-${suggestion.state}`}
+              className="flex w-full flex-col items-start px-3.5 py-2.5 text-left transition hover:bg-white/5 hover:text-white"
               type="button"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => props.onChange(suggestion)}
+              onClick={() => props.onChange(`${suggestion.label} - ${suggestion.city}/${suggestion.state}`)}
             >
-              {suggestion}
+              <span className="text-sm text-neutral-200">{suggestion.label}</span>
+              <span className="text-[11px] text-neutral-500">
+                {suggestion.city}, {suggestion.state}
+              </span>
             </button>
           ))}
         </div>
@@ -173,6 +179,7 @@ function PlatformChip(props: {
 function RegisterRideCard(props: {
   canRemove: boolean;
   index: number;
+  isLast: boolean;
   ride: RegisterRideDraft;
   onChange: (ride: RegisterRideDraft) => void;
   onRemove: () => void;
@@ -227,6 +234,28 @@ function RegisterRideCard(props: {
       </div>
 
       <RegisterField label="Observação (opcional)" placeholder="Surge, bônus, evento..." value={props.ride.obs} onChange={updateField("obs")} />
+
+      {!props.isLast && (
+        <div className="mt-3 rounded-[0.9rem] border border-dashed border-white/10 bg-white/[0.02] p-3">
+          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-neutral-600">
+            Intervalo até a próxima corrida
+          </div>
+          <div className="flex items-end gap-2.5">
+            <div className="min-w-0 flex-1 text-xs leading-5 text-neutral-500">
+              Informe quanto tempo você ficou parado antes da corrida #{props.index + 2}. Se não houve pausa, deixe 00:00.
+            </div>
+            <div className="w-[150px] shrink-0">
+              <RegisterField
+                label="Tempo parado"
+                placeholder="00:00"
+                type="time"
+                value={props.ride.idleAfter}
+                onChange={updateField("idleAfter")}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -236,7 +265,6 @@ export default function RegisterModal(props: {
   onSubmit: (payload: RegisterModalPayload) => void;
   open: boolean;
 }) {
-  const [idleTime, setIdleTime] = useState("");
   const [mode, setMode] = useState<RegisterMode | null>(null);
   const [rides, setRides] = useState<RegisterRideDraft[]>([createEmptyRide()]);
   const [daily, setDaily] = useState<DailySummaryDraft>(createEmptyDaily());
@@ -247,7 +275,6 @@ export default function RegisterModal(props: {
       return;
     }
 
-    setIdleTime("");
     setMode(null);
     setRides([createEmptyRide()]);
     setDaily(createEmptyDaily());
@@ -270,7 +297,6 @@ export default function RegisterModal(props: {
     window.setTimeout(() => {
       if (mode === "corrida") {
         props.onSubmit({
-          idleTime,
           mode: "corrida",
           rides,
         });
@@ -409,6 +435,7 @@ export default function RegisterModal(props: {
                   key={ride.id}
                   canRemove={rides.length > 1}
                   index={index}
+                  isLast={index === rides.length - 1}
                   ride={ride}
                   onChange={(updatedRide) =>
                     setRides((current) =>
@@ -421,27 +448,14 @@ export default function RegisterModal(props: {
                 />
               ))}
 
-              <div className="flex items-end gap-2.5">
-                <div className="min-w-0 flex-1">
-                  <button
-                    className="flex w-full items-center justify-center gap-2 rounded-[0.95rem] border border-dashed border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-neutral-400 transition hover:bg-white/[0.07]"
-                    type="button"
-                    onClick={() => setRides((current) => [...current, createEmptyRide()])}
-                  >
-                    <span className="text-lg leading-none">+</span>
-                    Adicionar corrida
-                  </button>
-                </div>
-                <div className="w-[180px]">
-                  <RegisterField
-                    label="Tempo parado"
-                    placeholder="00:00"
-                    type="time"
-                    value={idleTime}
-                    onChange={setIdleTime}
-                  />
-                </div>
-              </div>
+              <button
+                className="flex w-full items-center justify-center gap-2 rounded-[0.95rem] border border-dashed border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-neutral-400 transition hover:bg-white/[0.07]"
+                type="button"
+                onClick={() => setRides((current) => [...current, createEmptyRide()])}
+              >
+                <span className="text-lg leading-none">+</span>
+                Adicionar corrida
+              </button>
             </div>
 
             <div className="border-t border-white/5 px-6 pb-7 pt-4">

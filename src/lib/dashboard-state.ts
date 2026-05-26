@@ -27,6 +27,13 @@ export type VehicleProfile = {
   year: number;
 };
 
+export type RideQualityThreshold = {
+  badBelow: number;
+  goodAbove: number;
+};
+
+export type RideQualityThresholds = Record<PlatformKey | "all", RideQualityThreshold>;
+
 export type SettingsState = {
   accent: "green" | "red" | "white";
   autoFuel: boolean;
@@ -34,6 +41,7 @@ export type SettingsState = {
   multiSession: boolean;
   notifications: boolean;
   platformGoals: Record<PlatformKey, number>;
+  rideQualityThresholds: RideQualityThresholds;
   twoFactor: boolean;
   vehicle: VehicleProfile;
 };
@@ -102,6 +110,24 @@ export const defaultSettings: SettingsState = {
     indrive: 500,
     uber: 3000,
   },
+  rideQualityThresholds: {
+    all: {
+      badBelow: 1.4,
+      goodAbove: 3.2,
+    },
+    "99": {
+      badBelow: 1.4,
+      goodAbove: 3.2,
+    },
+    indrive: {
+      badBelow: 1.4,
+      goodAbove: 3.2,
+    },
+    uber: {
+      badBelow: 1.4,
+      goodAbove: 3.2,
+    },
+  },
   twoFactor: false,
   vehicle: createVehicleProfile(defaultVehicleEntry),
 };
@@ -144,6 +170,10 @@ export function normalizeDashboardState(input: unknown): DashboardStatePayload {
       platformGoals: {
         ...fallback.settings.platformGoals,
         ...(candidate.settings?.platformGoals ?? {}),
+      },
+      rideQualityThresholds: {
+        ...fallback.settings.rideQualityThresholds,
+        ...(candidate.settings?.rideQualityThresholds ?? {}),
       },
       vehicle: {
         ...fallback.settings.vehicle,

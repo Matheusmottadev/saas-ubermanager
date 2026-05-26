@@ -66,6 +66,8 @@ import {
   defaultSettings,
   type DashboardStatePayload,
   type IdleTimeEntry,
+  type RideQualityThreshold,
+  type RideQualityThresholds,
   type ScheduledMaintenanceItem,
   type SettingsState,
   type VehicleProfile,
@@ -777,26 +779,55 @@ function getQualityTone(quality: Ride["quality"]) {
   return "text-neutral-400";
 }
 
-function getQualityFromRide(earnings: number, distanceKm: number): Ride["quality"] {
-  const gainPerKm = distanceKm > 0 ? earnings / distanceKm : 0;
+function getRideQualityThreshold(
+  thresholds: RideQualityThresholds,
+  platform: PlatformKey,
+): RideQualityThreshold {
+  return thresholds[platform] ?? thresholds.all;
+}
 
-  if (gainPerKm >= 3.2) {
+function sanitizeRideQualityThreshold(
+  threshold: Partial<RideQualityThreshold> | undefined,
+  fallback: RideQualityThreshold,
+): RideQualityThreshold {
+  const badBelow = Number.isFinite(Number(threshold?.badBelow))
+    ? Math.max(Number(threshold?.badBelow), 0)
+    : fallback.badBelow;
+  const goodAbove = Number.isFinite(Number(threshold?.goodAbove))
+    ? Math.max(Number(threshold?.goodAbove), badBelow)
+    : fallback.goodAbove;
+
+  return {
+    badBelow,
+    goodAbove,
+  };
+}
+
+function applyRideQualityThresholds(rides: Ride[], thresholds: RideQualityThresholds) {
+  return rides.map((ride) => ({
+    ...ride,
+    quality: getQualityFromRide(ride.earnings, ride.distanceKm, ride.platform, thresholds),
+  }));
+}
+
+function getQualityFromRide(
+  earnings: number,
+  distanceKm: number,
+  platform: PlatformKey,
+  thresholds: RideQualityThresholds,
+): Ride["quality"] {
+  const gainPerKm = distanceKm > 0 ? earnings / distanceKm : 0;
+  const threshold = getRideQualityThreshold(thresholds, platform);
+
+  if (gainPerKm >= threshold.goodAbove) {
     return "excelente";
   }
 
-  if (gainPerKm >= 2.5) {
-    return "otimo";
+  if (gainPerKm < threshold.badBelow) {
+    return "baixo";
   }
 
-  if (gainPerKm >= 2) {
-    return "ok";
-  }
-
-  if (gainPerKm >= 1.4) {
-    return "normal";
-  }
-
-  return "baixo";
+  return "ok";
 }
 
 function buildRideTimeLabel(start: string, end: string, distanceKm: number, rideDate?: Date) {
@@ -949,13 +980,32 @@ function FinanceiroDashboardClient() {
           return;
         }
 
+        const loadedSettings = {
+          ...defaultSettings,
+          ...(data.settings ?? {}),
+          platformGoals: {
+            ...defaultSettings.platformGoals,
+            ...(data.settings?.platformGoals ?? {}),
+          },
+          rideQualityThresholds: {
+            ...defaultSettings.rideQualityThresholds,
+            ...(data.settings?.rideQualityThresholds ?? {}),
+          },
+          vehicle: {
+            ...defaultSettings.vehicle,
+            ...(data.settings?.vehicle ?? {}),
+          },
+        } as SettingsState;
+
         setActivePlatforms({
           ...defaultPlatforms,
           ...(data.activePlatforms ?? {}),
         });
-        setSettings(data.settings ?? defaultSettings);
-        setSavedSettings(data.settings ?? defaultSettings);
-        setEditableRides(Array.isArray(data.rides) ? data.rides : []);
+        setSettings(loadedSettings);
+        setSavedSettings(loadedSettings);
+        setEditableRides(
+          applyRideQualityThresholds(Array.isArray(data.rides) ? data.rides : [], loadedSettings.rideQualityThresholds),
+        );
         setEditableCosts(Array.isArray(data.costs) ? data.costs : []);
         setIdleTimeEntries(Array.isArray(data.idleTimeEntries) ? data.idleTimeEntries : []);
         setScheduledMaintenance(Array.isArray(data.scheduledMaintenance) ? data.scheduledMaintenance : []);
@@ -1211,6 +1261,38 @@ function FinanceiroDashboardClient() {
     setToastMessage("Alteracoes descartadas");
   };
 
+  const handleSaveRideQualityThresholds = (
+    target: "all" | PlatformKey,
+    thresholdDraft: RideQualityThreshold,
+  ) => {
+    const fallback =
+      target === "all"
+        ? settings.rideQualityThresholds.all
+        : settings.rideQualityThresholds[target];
+    const sanitized = sanitizeRideQualityThreshold(thresholdDraft, fallback);
+    const nextThresholds =
+      target === "all"
+        ? {
+            all: sanitized,
+            uber: sanitized,
+            "99": sanitized,
+            indrive: sanitized,
+          }
+        : {
+            ...settings.rideQualityThresholds,
+            [target]: sanitized,
+          };
+    const nextSettings = {
+      ...settings,
+      rideQualityThresholds: nextThresholds,
+    };
+
+    setSettings(nextSettings);
+    setSavedSettings(nextSettings);
+    setEditableRides((current) => applyRideQualityThresholds(current, nextThresholds));
+    setToastMessage("Regua de status atualizada");
+  };
+
   const handleUberConnect = () => {
     setToastMessage("Libere os Authorization Code scopes da Uber para ativar a conexao.");
   };
@@ -1327,27 +1409,35 @@ function FinanceiroDashboardClient() {
           id: `ride-${Date.now()}-${index}`,
           note: ride.obs.trim() || undefined,
           platform: ride.platform,
-          quality: getQualityFromRide(earnings, distanceKm),
+          quality: getQualityFromRide(earnings, distanceKm, ride.platform, settings.rideQualityThresholds),
           route: `${origin} → ${destination}`,
           timeLabel: buildRideTimeLabel(ride.start, ride.end, distanceKm, new Date(createdAt)),
         };
       });
 
-      const idleMinutes = parseDurationToMinutes(payload.idleTime);
-      if (idleMinutes > 0) {
-        const referenceDate = payload.rides.find((ride) => ride.date)?.date;
-        const createdAt = referenceDate
-          ? new Date(`${referenceDate}T12:00:00`).toISOString()
-          : new Date().toISOString();
+      const idleEntries = payload.rides
+        .slice(0, -1)
+        .map((ride, index) => {
+          const minutes = parseDurationToMinutes(ride.idleAfter);
+          if (minutes <= 0) {
+            return null;
+          }
 
-        setIdleTimeEntries((current) => [
-          {
+          const referenceDate = ride.date || payload.rides[index + 1]?.date;
+          const createdAt = referenceDate
+            ? new Date(`${referenceDate}T12:00:00`).toISOString()
+            : new Date().toISOString();
+
+          return {
             createdAt,
-            id: `idle-${Date.now()}`,
-            minutes: idleMinutes,
-          },
-          ...current,
-        ]);
+            id: `idle-${Date.now()}-${index}`,
+            minutes,
+          };
+        })
+        .filter(Boolean) as IdleTimeEntry[];
+
+      if (idleEntries.length > 0) {
+        setIdleTimeEntries((current) => [...idleEntries, ...current]);
       }
 
       setEditableRides((current) => [...createdRides, ...current]);
@@ -1661,8 +1751,10 @@ function FinanceiroDashboardClient() {
                 monthRides={monthRides}
                 onEditRide={openRideEditor}
                 onFilterChange={setCorridasFilter}
+                onSaveQualityThresholds={handleSaveRideQualityThresholds}
                 previousAvgRide={previousAvgRide}
                 previousMonthRides={previousMonthRides}
+                qualityThresholds={settings.rideQualityThresholds}
                 rides={corridasRides}
                 visiblePlatforms={activePlatformKeys}
               />
@@ -2724,14 +2816,79 @@ function CorridasPage(props: {
   monthRides: number;
   onEditRide: (ride: Ride) => void;
   onFilterChange: (value: "all" | PlatformKey) => void;
+  onSaveQualityThresholds: (target: "all" | PlatformKey, threshold: RideQualityThreshold) => void;
   previousAvgRide: number;
   previousMonthRides: number;
+  qualityThresholds: RideQualityThresholds;
   rides: Ride[];
   visiblePlatforms: PlatformKey[];
 }) {
+  const selectedThreshold =
+    props.corridasFilter === "all"
+      ? props.qualityThresholds.all
+      : props.qualityThresholds[props.corridasFilter];
+  const [badBelowDraft, setBadBelowDraft] = useState(String(selectedThreshold.badBelow));
+  const [goodAboveDraft, setGoodAboveDraft] = useState(String(selectedThreshold.goodAbove));
+
+  useEffect(() => {
+    setBadBelowDraft(String(selectedThreshold.badBelow));
+    setGoodAboveDraft(String(selectedThreshold.goodAbove));
+  }, [selectedThreshold.badBelow, selectedThreshold.goodAbove, props.corridasFilter]);
+
+  const filterLabel = props.corridasFilter === "all" ? "todas as plataformas" : platformMeta[props.corridasFilter].label;
+
   return (
     <div className="space-y-5">
-      <PlatformTabs current={props.corridasFilter} onChange={props.onFilterChange} visiblePlatforms={props.visiblePlatforms} />
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+        <PlatformTabs current={props.corridasFilter} onChange={props.onFilterChange} visiblePlatforms={props.visiblePlatforms} />
+        <SurfaceCard className="space-y-3 p-4">
+          <div>
+            <div className="text-sm font-semibold text-white">Régua de status</div>
+            <div className="mt-1 text-xs leading-5 text-neutral-500">
+              Defina a referência de {filterLabel} em R$/km. Abaixo do mínimo fica ruim, acima do máximo fica excelente.
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Ruim abaixo de</span>
+              <input
+                className="h-11 rounded-[0.95rem] border border-white/10 bg-[#181818] px-3.5 text-sm text-white outline-none transition focus:border-white/20"
+                step="0.1"
+                type="number"
+                value={badBelowDraft}
+                onChange={(event) => setBadBelowDraft(event.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Bom acima de</span>
+              <input
+                className="h-11 rounded-[0.95rem] border border-white/10 bg-[#181818] px-3.5 text-sm text-white outline-none transition focus:border-white/20"
+                step="0.1"
+                type="number"
+                value={goodAboveDraft}
+                onChange={(event) => setGoodAboveDraft(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[11px] leading-5 text-neutral-500">
+              O que ficar entre os dois valores aparece como <span className="font-semibold text-amber-300">ok</span>.
+            </div>
+            <button
+              className="rounded-xl bg-[#f5f4f0] px-3.5 py-2 text-sm font-semibold text-black transition hover:opacity-90"
+              type="button"
+              onClick={() =>
+                props.onSaveQualityThresholds(props.corridasFilter, {
+                  badBelow: Number(badBelowDraft),
+                  goodAbove: Number(goodAboveDraft),
+                })
+              }
+            >
+              Salvar
+            </button>
+          </div>
+        </SurfaceCard>
+      </div>
       <div className="grid gap-3 lg:grid-cols-2">
         <MetricCard
           contrast
