@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 
 import { platformMeta, platformOrder, type PlatformKey } from "./data";
+import { saoPauloNeighborhoods } from "@/lib/sp-neighborhoods";
 
 type RegisterMode = "corrida" | "diario";
 
 type RegisterRideDraft = {
+  date: string;
   destination: string;
   end: string;
   id: string;
@@ -29,6 +31,7 @@ type DailySummaryDraft = {
 
 export type RegisterModalPayload =
   | {
+      idleTime: string;
       mode: "corrida";
       rides: RegisterRideDraft[];
     }
@@ -39,6 +42,7 @@ export type RegisterModalPayload =
 
 function createEmptyRide(): RegisterRideDraft {
   return {
+    date: "",
     destination: "",
     end: "",
     id: Math.random().toString(36).slice(2),
@@ -89,6 +93,56 @@ function RegisterField(props: {
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
       />
+    </label>
+  );
+}
+
+function normalizeSuggestionText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function NeighborhoodField(props: {
+  label: string;
+  placeholder?: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const normalizedInput = normalizeSuggestionText(props.value);
+  const suggestions =
+    normalizedInput.length >= 2
+      ? saoPauloNeighborhoods
+          .filter((item) => normalizeSuggestionText(item).includes(normalizedInput))
+          .slice(0, 6)
+      : [];
+
+  return (
+    <label className="relative flex flex-1 flex-col gap-1.5">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">{props.label}</span>
+      <input
+        className="h-11 w-full rounded-[0.85rem] border border-white/10 bg-white/[0.04] px-3.5 text-sm text-[#f5f4f0] outline-none transition placeholder:text-neutral-600 focus:border-white/20"
+        placeholder={props.placeholder}
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+      />
+      {suggestions.length > 0 && (
+        <div className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-[0.95rem] border border-white/10 bg-[#1a1a1a] shadow-2xl">
+          {suggestions.map((suggestion) => (
+            <button
+              key={`${props.label}-${suggestion}`}
+              className="flex w-full items-center px-3.5 py-2.5 text-left text-sm text-neutral-300 transition hover:bg-white/5 hover:text-white"
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => props.onChange(suggestion)}
+            >
+              {suggestion}
+            </button>
+          ))}
+        </div>
+      )}
     </label>
   );
 }
@@ -162,11 +216,12 @@ function RegisterRideCard(props: {
       </div>
 
       <div className="mb-2.5 flex gap-2.5">
-        <RegisterField label="Origem" placeholder="Bairro / rua" value={props.ride.origin} onChange={updateField("origin")} />
-        <RegisterField label="Destino" placeholder="Bairro / rua" value={props.ride.destination} onChange={updateField("destination")} />
+        <NeighborhoodField label="Origem" placeholder="Bairro" value={props.ride.origin} onChange={updateField("origin")} />
+        <NeighborhoodField label="Destino" placeholder="Bairro" value={props.ride.destination} onChange={updateField("destination")} />
       </div>
 
       <div className="mb-2.5 flex gap-2.5">
+        <RegisterField label="Data (opcional)" type="date" value={props.ride.date} onChange={updateField("date")} />
         <RegisterField label="Início" type="time" value={props.ride.start} onChange={updateField("start")} />
         <RegisterField label="Fim" type="time" value={props.ride.end} onChange={updateField("end")} />
       </div>
@@ -181,6 +236,7 @@ export default function RegisterModal(props: {
   onSubmit: (payload: RegisterModalPayload) => void;
   open: boolean;
 }) {
+  const [idleTime, setIdleTime] = useState("");
   const [mode, setMode] = useState<RegisterMode | null>(null);
   const [rides, setRides] = useState<RegisterRideDraft[]>([createEmptyRide()]);
   const [daily, setDaily] = useState<DailySummaryDraft>(createEmptyDaily());
@@ -191,6 +247,7 @@ export default function RegisterModal(props: {
       return;
     }
 
+    setIdleTime("");
     setMode(null);
     setRides([createEmptyRide()]);
     setDaily(createEmptyDaily());
@@ -213,6 +270,7 @@ export default function RegisterModal(props: {
     window.setTimeout(() => {
       if (mode === "corrida") {
         props.onSubmit({
+          idleTime,
           mode: "corrida",
           rides,
         });
@@ -363,14 +421,27 @@ export default function RegisterModal(props: {
                 />
               ))}
 
-              <button
-                className="flex w-full items-center justify-center gap-2 rounded-[0.95rem] border border-dashed border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-neutral-400 transition hover:bg-white/[0.07]"
-                type="button"
-                onClick={() => setRides((current) => [...current, createEmptyRide()])}
-              >
-                <span className="text-lg leading-none">+</span>
-                Adicionar corrida
-              </button>
+              <div className="flex items-end gap-2.5">
+                <div className="min-w-0 flex-1">
+                  <button
+                    className="flex w-full items-center justify-center gap-2 rounded-[0.95rem] border border-dashed border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-neutral-400 transition hover:bg-white/[0.07]"
+                    type="button"
+                    onClick={() => setRides((current) => [...current, createEmptyRide()])}
+                  >
+                    <span className="text-lg leading-none">+</span>
+                    Adicionar corrida
+                  </button>
+                </div>
+                <div className="w-[180px]">
+                  <RegisterField
+                    label="Tempo parado"
+                    placeholder="00:00"
+                    type="time"
+                    value={idleTime}
+                    onChange={setIdleTime}
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="border-t border-white/5 px-6 pb-7 pt-4">

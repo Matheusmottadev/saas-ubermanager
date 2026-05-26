@@ -46,9 +46,16 @@ export type ScheduledMaintenanceItem = {
   subtitle: string;
 };
 
+export type IdleTimeEntry = {
+  createdAt: string;
+  id: string;
+  minutes: number;
+};
+
 export type DashboardStatePayload = {
   activePlatforms: Record<PlatformKey, boolean>;
   costs: CostItem[];
+  idleTimeEntries: IdleTimeEntry[];
   rides: Ride[];
   scheduledMaintenance: ScheduledMaintenanceItem[];
   settings: SettingsState;
@@ -103,6 +110,7 @@ export function createInitialDashboardState(): DashboardStatePayload {
   return {
     activePlatforms: { ...defaultPlatforms },
     costs: [],
+    idleTimeEntries: [],
     rides: [],
     scheduledMaintenance: [],
     settings: JSON.parse(JSON.stringify(defaultSettings)) as SettingsState,
@@ -123,6 +131,9 @@ export function normalizeDashboardState(input: unknown): DashboardStatePayload {
       ...(candidate.activePlatforms ?? {}),
     },
     costs: Array.isArray(candidate.costs) ? candidate.costs : fallback.costs,
+    idleTimeEntries: Array.isArray(candidate.idleTimeEntries)
+      ? candidate.idleTimeEntries
+      : fallback.idleTimeEntries,
     rides: Array.isArray(candidate.rides) ? candidate.rides : fallback.rides,
     scheduledMaintenance: Array.isArray(candidate.scheduledMaintenance)
       ? candidate.scheduledMaintenance

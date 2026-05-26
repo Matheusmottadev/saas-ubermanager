@@ -65,6 +65,7 @@ import {
   defaultPlatforms,
   defaultSettings,
   type DashboardStatePayload,
+  type IdleTimeEntry,
   type ScheduledMaintenanceItem,
   type SettingsState,
   type VehicleProfile,
@@ -394,6 +395,15 @@ function getRideDate(ride: Ride) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function getEntryDate(value?: string) {
+  if (!value) {
+    return new Date();
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 function isSameCalendarDay(left: Date, right: Date) {
   return (
     left.getFullYear() === right.getFullYear() &&
@@ -433,6 +443,41 @@ function getRideDurationBreakdown(ride: Ride) {
 function formatShortWeekday(date: Date) {
   const label = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
   return label.charAt(0).toUpperCase() + label.slice(1, 3);
+}
+
+function getRideDateLabel(date: Date) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+
+  if (isSameCalendarDay(target, today)) {
+    return "Hoje";
+  }
+
+  if (isSameCalendarDay(target, yesterday)) {
+    return "Ontem";
+  }
+
+  return target.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+}
+
+function parseDurationToMinutes(value: string) {
+  if (!value) {
+    return 0;
+  }
+
+  const [hoursRaw, minutesRaw] = value.split(":");
+  const hours = Number(hoursRaw) || 0;
+  const minutes = Number(minutesRaw) || 0;
+  return Math.max(hours * 60 + minutes, 0);
 }
 
 function createEmptyPlatformMetricsMap() {
@@ -754,11 +799,12 @@ function getQualityFromRide(earnings: number, distanceKm: number): Ride["quality
   return "baixo";
 }
 
-function buildRideTimeLabel(start: string, end: string, distanceKm: number) {
+function buildRideTimeLabel(start: string, end: string, distanceKm: number, rideDate?: Date) {
   const safeDistance = distanceKm.toLocaleString("pt-BR", {
     maximumFractionDigits: 1,
     minimumFractionDigits: 1,
   });
+  const dayLabel = getRideDateLabel(rideDate ?? new Date());
 
   if (start && end) {
     const [startHour, startMinute] = start.split(":").map(Number);
@@ -771,14 +817,14 @@ function buildRideTimeLabel(start: string, end: string, distanceKm: number) {
     }
 
     const duration = Math.max(endTotal - startTotal, 0);
-    return `Hoje ${start} · ${safeDistance} km · ${duration} min`;
+    return `${dayLabel} ${start} · ${safeDistance} km · ${duration} min`;
   }
 
   if (start) {
-    return `Hoje ${start} · ${safeDistance} km`;
+    return `${dayLabel} ${start} · ${safeDistance} km`;
   }
 
-  return `Hoje · ${safeDistance} km`;
+  return `${dayLabel} · ${safeDistance} km`;
 }
 
 function getHeatClass(value: number) {
@@ -862,6 +908,7 @@ function FinanceiroDashboardClient() {
   const [savedSettings, setSavedSettings] = useState<SettingsState>(initialDashboardState.settings);
   const [editableRides, setEditableRides] = useState<Ride[]>(initialDashboardState.rides);
   const [editableCosts, setEditableCosts] = useState<CostItem[]>(initialDashboardState.costs);
+  const [idleTimeEntries, setIdleTimeEntries] = useState<IdleTimeEntry[]>(initialDashboardState.idleTimeEntries);
   const [scheduledMaintenance, setScheduledMaintenance] = useState<ScheduledMaintenanceItem[]>(
     initialDashboardState.scheduledMaintenance,
   );
@@ -910,6 +957,7 @@ function FinanceiroDashboardClient() {
         setSavedSettings(data.settings ?? defaultSettings);
         setEditableRides(Array.isArray(data.rides) ? data.rides : []);
         setEditableCosts(Array.isArray(data.costs) ? data.costs : []);
+        setIdleTimeEntries(Array.isArray(data.idleTimeEntries) ? data.idleTimeEntries : []);
         setScheduledMaintenance(Array.isArray(data.scheduledMaintenance) ? data.scheduledMaintenance : []);
       } catch (error) {
         console.error("dashboard state load failed", error);
@@ -967,6 +1015,7 @@ function FinanceiroDashboardClient() {
   const persistedStateSnapshot = JSON.stringify({
     activePlatforms,
     costs: editableCosts,
+    idleTimeEntries,
     rides: editableRides,
     scheduledMaintenance,
     settings,
@@ -1029,13 +1078,17 @@ function FinanceiroDashboardClient() {
     rides: editableRides,
     vehicle: settings.vehicle,
   });
+  const today = new Date();
+  const idleMinutesToday = idleTimeEntries
+    .filter((entry) => isSameCalendarDay(getEntryDate(entry.createdAt), today))
+    .reduce((total, entry) => total + entry.minutes, 0);
 
   const dayRevenue = sumMetric("dayRevenue");
   const yesterdayRevenue = sumMetric("yesterdayRevenue");
   const dayNet = sumMetric("dayNet");
   const dayKm = sumMetric("dayKm");
   const avgDayKm = sumMetric("avgDayKm");
-  const onlineMinutes = sumMetric("onlineMinutes");
+  const onlineMinutes = sumMetric("onlineMinutes") + idleMinutesToday;
   const ridesToday = sumMetric("ridesToday");
   const ridesYesterday = sumMetric("ridesYesterday");
   const fuelEstimate = sumMetric("fuelEstimate");
@@ -1051,7 +1104,7 @@ function FinanceiroDashboardClient() {
 
   const revenueDeltaPct = yesterdayRevenue ? ((dayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : 0;
   const netMarginPct = dayRevenue ? (dayNet / dayRevenue) * 100 : 0;
-  const hourlyValue = weightedAverage("currentHourly", "onlineMinutes");
+  const hourlyValue = onlineMinutes > 0 ? dayRevenue / (onlineMinutes / 60) : 0;
   const hourlyBenchmark = weightedAverage("hourlyBenchmark", "onlineMinutes");
   const gainPerKm = weightedAverage("currentGainPerKm", "dayKm");
   const previousGainPerKm = weightedAverage("prevWeekGainPerKm", "dayKm");
@@ -1263,9 +1316,12 @@ function FinanceiroDashboardClient() {
         const earnings = Number(ride.value) || 0;
         const origin = ride.origin.trim() || "Origem";
         const destination = ride.destination.trim() || "Destino";
+        const createdAt = ride.date
+          ? new Date(`${ride.date}T12:00:00`).toISOString()
+          : new Date().toISOString();
 
         return {
-          createdAt: new Date().toISOString(),
+          createdAt,
           distanceKm,
           earnings,
           id: `ride-${Date.now()}-${index}`,
@@ -1273,9 +1329,26 @@ function FinanceiroDashboardClient() {
           platform: ride.platform,
           quality: getQualityFromRide(earnings, distanceKm),
           route: `${origin} → ${destination}`,
-          timeLabel: buildRideTimeLabel(ride.start, ride.end, distanceKm),
+          timeLabel: buildRideTimeLabel(ride.start, ride.end, distanceKm, new Date(createdAt)),
         };
       });
+
+      const idleMinutes = parseDurationToMinutes(payload.idleTime);
+      if (idleMinutes > 0) {
+        const referenceDate = payload.rides.find((ride) => ride.date)?.date;
+        const createdAt = referenceDate
+          ? new Date(`${referenceDate}T12:00:00`).toISOString()
+          : new Date().toISOString();
+
+        setIdleTimeEntries((current) => [
+          {
+            createdAt,
+            id: `idle-${Date.now()}`,
+            minutes: idleMinutes,
+          },
+          ...current,
+        ]);
+      }
 
       setEditableRides((current) => [...createdRides, ...current]);
       setToastMessage(
@@ -1567,6 +1640,7 @@ function FinanceiroDashboardClient() {
                 monthProjection={monthProjection}
                 monthRemaining={monthRemaining}
                 onFilterChange={setDashboardFilter}
+                idleTimeEntries={idleTimeEntries}
                 platformGoals={settings.platformGoals}
                 platformMetrics={platformMetrics}
                 previousGainPerKm={previousGainPerKm}
@@ -2036,6 +2110,7 @@ function DashboardPage(props: {
   gainPerKm: number;
   hourlyBenchmark: number;
   hourlyValue: number;
+  idleTimeEntries: IdleTimeEntry[];
   monthGoal: number;
   monthNet: number;
   monthPct: number;
@@ -2095,8 +2170,11 @@ function DashboardPage(props: {
   const selectedRidesYesterday = sumSelectedMetric("ridesYesterday");
   const selectedFuelEstimate = sumSelectedMetric("fuelEstimate");
   const selectedFuelAverage = sumSelectedMetric("fuelAverage");
-  const selectedOnlineMinutes = sumSelectedMetric("onlineMinutes");
-  const selectedHourlyValue = weightedSelectedMetric("currentHourly", "onlineMinutes");
+  const selectedIdleMinutes = props.idleTimeEntries
+    .filter((entry) => isSameCalendarDay(getEntryDate(entry.createdAt), new Date()))
+    .reduce((total, entry) => total + entry.minutes, 0);
+  const selectedOnlineMinutes = sumSelectedMetric("onlineMinutes") + selectedIdleMinutes;
+  const selectedHourlyValue = selectedOnlineMinutes > 0 ? selectedDayRevenue / (selectedOnlineMinutes / 60) : 0;
   const selectedHourlyBenchmark = weightedSelectedMetric("hourlyBenchmark", "onlineMinutes");
   const selectedGainPerKm = weightedSelectedMetric("currentGainPerKm", "dayKm");
   const selectedPreviousGainPerKm = weightedSelectedMetric("prevWeekGainPerKm", "dayKm");
@@ -2166,6 +2244,9 @@ function DashboardPage(props: {
     const rides = props.rides.filter(
       (ride) => selectedPlatformSet.has(ride.platform) && isSameCalendarDay(getRideDate(ride), date),
     );
+    const idleMinutes = props.idleTimeEntries
+      .filter((entry) => isSameCalendarDay(getEntryDate(entry.createdAt), date))
+      .reduce((total, entry) => total + entry.minutes, 0);
     const revenueWithRealTime = rides.reduce((total, ride) => {
       const breakdown = getRideDurationBreakdown(ride);
       return breakdown.realMinutes > 0 ? total + ride.earnings : total;
@@ -2183,8 +2264,8 @@ function DashboardPage(props: {
     return {
       day: isSameCalendarDay(date, new Date()) ? "Hoje" : formatShortWeekday(date),
       onlineEstimatedMinutes,
-      onlineMinutes: onlineRealMinutes + onlineEstimatedMinutes,
-      onlineRealMinutes,
+      onlineMinutes: onlineRealMinutes + onlineEstimatedMinutes + idleMinutes,
+      onlineRealMinutes: onlineRealMinutes + idleMinutes,
       revenue: revenueWithRealTime + revenueEstimatedTime,
       revenueEstimatedTime,
       revenueWithRealTime,
@@ -2530,23 +2611,23 @@ function DashboardPage(props: {
                           <div
                             className={cn(
                               "flex w-[54px] flex-col justify-end overflow-hidden rounded-t-[3px]",
-                              bar.day === "Hoje" ? "bg-[#6f6f6f]" : "bg-transparent",
+                              bar.day === "Hoje" && bar.total === 0 ? "bg-[#6f6f6f]" : "bg-transparent",
                             )}
                             style={{ height: `${totalHeight}%` }}
                           >
-                            {bar.day !== "Hoje" && bar.uber > 0 && (
+                            {bar.uber > 0 && (
                               <div
                                 className="w-full bg-[#f5f4f0]"
                                 style={{ height: `${uberHeight}%` }}
                               />
                             )}
-                            {bar.day !== "Hoje" && bar.n99 > 0 && (
+                            {bar.n99 > 0 && (
                               <div
                                 className="w-full bg-[#f0dd96]"
                                 style={{ height: `${ninetyNineHeight}%` }}
                               />
                             )}
-                            {bar.day !== "Hoje" && bar.indrive > 0 && (
+                            {bar.indrive > 0 && (
                               <div
                                 className="w-full bg-[#75c772]"
                                 style={{ height: `${indriveHeight}%` }}
@@ -4271,11 +4352,11 @@ function MetricBarStrip(props: {
                   ) : null}
                   <div
                     className={cn(
-                      "absolute inset-0 flex items-center justify-center px-1 text-center text-[9px] font-medium leading-none",
+                      "absolute inset-0 flex items-center justify-center px-0 text-center text-[8px] font-medium leading-none tabular-nums",
                       item.highlight ? "text-[#0e1b08]/80" : "text-neutral-200/80",
                     )}
                   >
-                    <span className="max-w-full whitespace-nowrap">
+                    <span className="block w-full text-center whitespace-nowrap">
                       {item.text}
                     </span>
                   </div>
