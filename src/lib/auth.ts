@@ -13,6 +13,14 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function normalizePhone(phone: string) {
+  return phone.replace(/\D/g, "");
+}
+
+function createReferralCode() {
+  return randomBytes(4).toString("hex").toUpperCase();
+}
+
 function hashSessionToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -56,6 +64,7 @@ export async function ensureBootstrapUser() {
   await prisma.user.create({
     data: {
       email: DEMO_USER_EMAIL,
+      referralCode: createReferralCode(),
       passwordHash: await hashPassword(DEMO_USER_PASSWORD),
     },
   });
@@ -172,4 +181,4 @@ export async function authenticateUser(email: string, password: string) {
   return isValid ? user : null;
 }
 
-export { DEMO_USER_EMAIL, DEMO_USER_PASSWORD, SESSION_COOKIE_NAME, normalizeEmail };
+export { DEMO_USER_EMAIL, DEMO_USER_PASSWORD, SESSION_COOKIE_NAME, createReferralCode, normalizeEmail, normalizePhone };

@@ -152,12 +152,12 @@ const heatmapRows = [
 
 const pricingPlans = [
   {
-    badge: "Gratuito",
-    cta: "Começar grátis",
+    badge: "Promo 2 meses",
+    cta: "Assinar Essencial",
     featured: false,
-    features: ["Dashboard principal", "1 plataforma", "Histórico 30 dias", "Meta mensal"],
-    name: "Básico",
-    price: "R$0",
+    features: ["Registro de corridas", "Controle de despesas", "Metas por plataforma", "Custos fixos do veículo"],
+    name: "Essencial",
+    price: "R$14,90",
   },
   {
     badge: "Mais popular",
@@ -172,20 +172,7 @@ const pricingPlans = [
       "Histórico ilimitado",
     ],
     name: "Pro",
-    price: "R$19",
-  },
-  {
-    badge: "Equipe",
-    cta: "Falar com equipe",
-    featured: false,
-    features: [
-      "Até 5 motoristas",
-      "Painel do gestor",
-      "Comparativo entre motoristas",
-      "Tudo do Pro",
-    ],
-    name: "Frota",
-    price: "R$49",
+    price: "R$24,90",
   },
 ] as const;
 
@@ -252,7 +239,7 @@ export default function Home() {
           <a href="#analise" onClick={(event) => scrollToSection(event, "analise")}>Análise IA</a>
           <a href="#precos" onClick={(event) => scrollToSection(event, "precos")}>Preços</a>
           <Link className="urbann-nav__cta" href="/Financeiro">
-            Começar grátis
+            Entrar
           </Link>
         </div>
       </nav>
@@ -273,7 +260,7 @@ export default function Home() {
           Uber, 99 e inDrive.
         </p>
         <div className="urbann-hero__actions">
-          <Link className="urbann-btn urbann-btn--solid" href="/Financeiro">
+          <Link className="urbann-btn urbann-btn--solid" href="/onboarding">
             Criar conta grátis
           </Link>
           <a

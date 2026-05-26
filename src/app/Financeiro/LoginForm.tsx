@@ -102,7 +102,7 @@ export default function LoginForm(props: LoginFormProps) {
             </button>
 
             <p className="financeiro-login-hint">
-              Enquanto o cadastro não entra, use <strong>{props.demoEmail}</strong> e senha{" "}
+              Conta de demonstração: <strong>{props.demoEmail}</strong> e senha{" "}
               <strong>{props.demoPassword}</strong>.
             </p>
 
@@ -120,7 +120,11 @@ export default function LoginForm(props: LoginFormProps) {
 
             <p className="financeiro-login-signup">
               Não tem conta?{" "}
-              <button className="financeiro-login-signup-button" type="button">
+              <button
+                className="financeiro-login-signup-button"
+                type="button"
+                onClick={() => router.push("/onboarding")}
+              >
                 Crie agora mesmo
               </button>
             </p>

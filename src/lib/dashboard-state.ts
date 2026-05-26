@@ -17,6 +17,8 @@ export type VehicleProfile = {
   estimatedValue: number;
   fuelKind: VehicleFuelKind;
   model: string;
+  monthlyOwnershipCost: number;
+  ownershipStatus: "alugado" | "financiado" | "quitado";
   powertrain: VehiclePowertrain;
   segment: string;
   selectedVehicleId: string;
@@ -71,6 +73,8 @@ export function createVehicleProfile(entry: VehicleDatabaseEntry): VehicleProfil
     estimatedValue: entry.estimatedValue,
     fuelKind: entry.fuelKind,
     model: entry.model,
+    monthlyOwnershipCost: 0,
+    ownershipStatus: "quitado",
     powertrain: entry.powertrain,
     segment: entry.segment,
     selectedVehicleId: entry.id,

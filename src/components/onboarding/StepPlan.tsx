@@ -1,0 +1,207 @@
+"use client";
+
+import { Check } from "lucide-react";
+import { useEffect, useState } from "react";
+
+import type { PlanData } from "@/types/onboarding";
+
+interface Props {
+  data: PlanData;
+  onBack: () => void;
+  onChange: (data: PlanData) => void;
+  onNext: () => void;
+}
+
+const PLANS = [
+  {
+    badge: "Promo 2 meses",
+    description: "Controle essencial com tudo que o motorista precisa para operar no azul",
+    features: [
+      { ok: true, text: "Registro de corridas" },
+      { ok: true, text: "Controle de despesas e custos fixos" },
+      { ok: true, text: "Metas por plataforma" },
+      { ok: true, text: "1 veículo e até 3 plataformas" },
+      { ok: true, text: "Relatórios básicos" },
+      { ok: false, text: "Análise IA" },
+      { ok: false, text: "PDF/CSV e alertas avançados" },
+    ],
+    id: "basic" as const,
+    name: "Essencial",
+    period: "/mês",
+    price: "R$14,90",
+  },
+  {
+    badge: "Mais popular",
+    description: "Para quem quer ganhar mais com visão completa da operação",
+    features: [
+      { ok: true, text: "Tudo do Essencial" },
+      { ok: true, text: "3 plataformas simultâneas" },
+      { ok: true, text: "Mapa de calor" },
+      { ok: true, text: "Relatórios PDF/CSV" },
+      { ok: true, text: "Alertas e análise IA" },
+      { ok: true, text: "Histórico ilimitado" },
+    ],
+    id: "pro" as const,
+    name: "Pro",
+    period: "/mês",
+    price: "R$24,90",
+  },
+] as const;
+
+export default function StepPlan({ data, onBack, onChange, onNext }: Props) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  return (
+    <div>
+      <div
+        className={`flex items-center gap-2 mb-6 rounded-xl px-4 py-3 ${mounted ? "anim-fadeUp" : ""}`}
+        style={{ background: "var(--s2)", border: "0.5px solid var(--s3)" }}
+      >
+        <div className="flex -space-x-2">
+          {["SP", "RJ", "BH", "POA"].map((initials) => (
+            <div
+              key={initials}
+              className="rounded-full flex items-center justify-center text-xs font-bold"
+              style={{
+                background: "var(--s4)",
+                border: "1.5px solid var(--s1)",
+                color: "var(--cream)",
+                fontSize: 8,
+                height: 26,
+                width: 26,
+              }}
+            >
+              {initials}
+            </div>
+          ))}
+        </div>
+        <p style={{ color: "var(--s5)", fontSize: 12 }}>
+          <span style={{ color: "var(--cream)", fontWeight: 600 }}>
+            +3.400 motoristas
+          </span>{" "}
+          já usam o Urbann Pro
+        </p>
+      </div>
+
+      <div className={`grid grid-cols-2 gap-4 mb-6 ${mounted ? "anim-fadeUp d-100" : ""}`}>
+        {PLANS.map((plan) => {
+          const selected = data.selectedPlan === plan.id;
+
+          return (
+            <div
+              key={plan.id}
+              className={`plan-card ${selected ? "selected" : ""}`}
+              onClick={() => onChange({ selectedPlan: plan.id })}
+            >
+              {plan.badge ? (
+                <div
+                  className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-3 py-1 rounded-full text-xs font-bold"
+                  style={{
+                    background: "var(--cream)",
+                    color: "var(--black)",
+                    fontSize: 10,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {plan.badge}
+                </div>
+              ) : null}
+
+              {selected ? (
+                <div
+                  className="absolute top-3 right-3 rounded-full flex items-center justify-center"
+                  style={{ background: "var(--cream)", height: 20, width: 20 }}
+                >
+                  <Check size={11} style={{ color: "var(--black)" }} />
+                </div>
+              ) : null}
+
+              <div className="mb-3">
+                <p style={{ fontFamily: "var(--font-title), sans-serif", fontSize: 18, fontWeight: 800, letterSpacing: -0.5 }}>
+                  {plan.name}
+                </p>
+                <p style={{ color: "var(--s5)", fontSize: 11, marginTop: 3 }}>
+                  {plan.description}
+                </p>
+              </div>
+
+              <div className="flex items-baseline gap-1 mb-4">
+                <span style={{ fontFamily: "var(--font-title), sans-serif", fontSize: 28, fontWeight: 800, letterSpacing: -1 }}>
+                  {plan.price}
+                </span>
+                <span style={{ color: "var(--s5)", fontSize: 12 }}>{plan.period}</span>
+              </div>
+              <p style={{ color: "var(--s5)", fontSize: 10, marginTop: -10, marginBottom: 14 }}>
+                {plan.id === "pro" ? "Depois R$29,90/mês" : "Depois R$19,90/mês"}
+              </p>
+
+              <ul className="flex flex-col gap-2">
+                {plan.features.map((feature) => (
+                  <li
+                    key={feature.text}
+                    className="flex items-center gap-2"
+                    style={{
+                      color: feature.ok ? "var(--s6)" : "var(--s4)",
+                      fontSize: 12,
+                      opacity: feature.ok ? 1 : 0.5,
+                    }}
+                  >
+                    <span style={{ color: feature.ok ? "var(--green)" : "var(--s4)", flexShrink: 0 }}>
+                      {feature.ok ? (
+                        <Check size={12} />
+                      ) : (
+                        <svg fill="none" height="12" viewBox="0 0 24 24" width="12">
+                          <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" />
+                        </svg>
+                      )}
+                    </span>
+                    {feature.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      <div
+        className={`flex items-start gap-3 rounded-xl px-4 py-3 mb-8 ${mounted ? "anim-fadeUp d-200" : ""}`}
+        style={{
+          background: "rgba(76,175,80,.07)",
+          border: "0.5px solid rgba(76,175,80,.2)",
+        }}
+      >
+        <svg fill="none" height="16" viewBox="0 0 24 24" width="16" style={{ flexShrink: 0, marginTop: 2 }}>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#4CAF50" strokeWidth="2" />
+        </svg>
+        <div>
+          <p style={{ color: "var(--cream)", fontSize: 13, fontWeight: 600 }}>
+            7 dias grátis em qualquer plano
+          </p>
+          <p style={{ color: "var(--s5)", fontSize: 11, marginTop: 2 }}>
+            Novos usuários pagam o valor promocional por 2 meses. Depois disso, o plano volta ao valor normal.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <button className="btn-ghost flex-1 justify-center" onClick={onBack}>
+          <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
+            <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" strokeWidth="2.5" />
+          </svg>
+          Voltar
+        </button>
+        <button className="btn-primary flex-[2] justify-center" onClick={onNext}>
+          {data.selectedPlan === "pro" ? "Começar Pro" : "Começar Essencial"}
+          <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
+            <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.5" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}

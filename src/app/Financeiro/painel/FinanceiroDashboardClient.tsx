@@ -229,12 +229,36 @@ function buildVehicleDepreciationCost(vehicle: VehicleProfile): CostItem | null 
   };
 }
 
+function buildVehicleOwnershipCost(vehicle: VehicleProfile): CostItem | null {
+  if (vehicle.ownershipStatus === "quitado" || vehicle.monthlyOwnershipCost <= 0) {
+    return null;
+  }
+
+  const isRental = vehicle.ownershipStatus === "alugado";
+
+  return {
+    amount: Number(vehicle.monthlyOwnershipCost.toFixed(2)),
+    color: isRental ? "#7dd97a" : "#f5c46b",
+    icon: "car",
+    id: "cost-vehicle-ownership",
+    label: isRental ? "Aluguel do veículo" : "Parcela do veículo",
+    percentage: 0,
+    subtitle: isRental
+      ? `${vehicle.brand} ${vehicle.model} · aluguel mensal`
+      : `${vehicle.brand} ${vehicle.model} · financiamento mensal`,
+  };
+}
+
 function withCostPercentages(costs: CostItem[]) {
   const totalAmount = sumCost(costs);
   return costs.map((cost) => ({
     ...cost,
     percentage: totalAmount ? Math.round((cost.amount / totalAmount) * 100) : 0,
   }));
+}
+
+function isFixedCost(cost: CostItem) {
+  return cost.id === "cost-vehicle-depreciation" || cost.id === "cost-vehicle-ownership";
 }
 
 function createEmptyExpenseDraft(): ExpenseDraft {
@@ -865,7 +889,10 @@ function FinanceiroDashboardClient() {
 
   const vehicleUi = getVehicleUiCopy(settings.vehicle);
   const depreciationCost = buildVehicleDepreciationCost(settings.vehicle);
-  const allCosts = withCostPercentages(depreciationCost ? [depreciationCost, ...editableCosts] : editableCosts);
+  const ownershipCost = buildVehicleOwnershipCost(settings.vehicle);
+  const allCosts = withCostPercentages(
+    [depreciationCost, ownershipCost, ...editableCosts].filter(Boolean) as CostItem[],
+  );
 
   const dayRevenue = sumMetric("dayRevenue");
   const yesterdayRevenue = sumMetric("yesterdayRevenue");
@@ -2439,6 +2466,46 @@ function FinanceiroPage(props: {
   profitMarginPct: number;
   visiblePlatforms: PlatformKey[];
 }) {
+  const fixedCosts = props.costs.filter(isFixedCost);
+  const variableCosts = props.costs.filter((cost) => !isFixedCost(cost));
+
+  const renderCostGroup = (title: string, subtitle: string, costs: CostItem[]) => (
+    <div className="space-y-3">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-white">{title}</div>
+          <div className="text-xs text-neutral-500">{subtitle}</div>
+        </div>
+        <div className="text-sm font-semibold text-rose-400">-{formatCurrency(sumCost(costs))}</div>
+      </div>
+
+      {costs.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/8 bg-[#232323] px-4 py-4 text-sm text-neutral-500">
+          Nenhum item neste grupo ainda.
+        </div>
+      ) : (
+        costs.map((cost) => {
+          const Icon = getIconByKey(cost.icon);
+          return (
+            <div key={cost.id} className="flex items-center gap-3 rounded-2xl bg-[#232323] px-4 py-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ backgroundColor: `${cost.color}1a`, color: cost.color }}>
+                <Icon className="h-4 w-4" />
+              </div>
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-white">{cost.label}</div>
+                <div className="text-xs text-neutral-500">{cost.subtitle}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm font-bold text-rose-400">-{formatCurrency(cost.amount)}</div>
+                <div className="text-xs text-neutral-500">{cost.percentage}%</div>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-5">
       <div className="grid gap-3 xl:grid-cols-4">
@@ -2461,30 +2528,26 @@ function FinanceiroPage(props: {
               Adicionar
             </button>
           </div>
-          <div className="space-y-3">
+          <div className="space-y-5">
             {props.costs.length === 0 && (
               <div className="rounded-2xl border border-dashed border-white/8 bg-[#232323] px-4 py-6 text-sm text-neutral-500">
                 Nenhuma despesa registrada ainda.
               </div>
             )}
-            {props.costs.map((cost) => {
-              const Icon = getIconByKey(cost.icon);
-              return (
-                <div key={cost.id} className="flex items-center gap-3 rounded-2xl bg-[#232323] px-4 py-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl" style={{ backgroundColor: `${cost.color}1a`, color: cost.color }}>
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold text-white">{cost.label}</div>
-                    <div className="text-xs text-neutral-500">{cost.subtitle}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-bold text-rose-400">-{formatCurrency(cost.amount)}</div>
-                    <div className="text-xs text-neutral-500">{cost.percentage}%</div>
-                  </div>
-                </div>
-              );
-            })}
+            {props.costs.length > 0 && (
+              <>
+                {renderCostGroup(
+                  "Custos fixos",
+                  "Despesas recorrentes do veículo e operação",
+                  fixedCosts,
+                )}
+                {renderCostGroup(
+                  "Custos variáveis",
+                  "Gastos lançados conforme uso no dia a dia",
+                  variableCosts,
+                )}
+              </>
+            )}
             <div className="mt-1 flex items-center justify-between border-t border-white/5 pt-3 text-sm font-semibold text-white">
               <span>Total custos</span>
               <span className="text-rose-400">-{formatCurrency(sumCost(props.costs))}</span>
@@ -3364,6 +3427,23 @@ function ConfiguracoesPage(props: {
                       Calculada a partir da depreciação anual do modelo.
                     </div>
                   </div>
+                  <div className="rounded-2xl border border-white/6 bg-[#1d1d1d] px-4 py-3 md:col-span-2">
+                    <div className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">
+                      Situação do veículo
+                    </div>
+                    <div className="mt-1 text-base font-semibold text-white">
+                      {props.settings.vehicle.ownershipStatus === "quitado"
+                        ? "Quitado"
+                        : props.settings.vehicle.ownershipStatus === "alugado"
+                          ? "Alugado"
+                          : "Em financiamento"}
+                    </div>
+                    <div className="text-xs text-neutral-500">
+                      {props.settings.vehicle.ownershipStatus === "quitado"
+                        ? "Sem parcela fixa mensal."
+                        : `${formatCurrency(props.settings.vehicle.monthlyOwnershipCost)} por mês entra automaticamente nas despesas.`}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -3585,6 +3665,60 @@ function ConfiguracoesPage(props: {
                         props.setSettings((current) => ({
                           ...current,
                           vehicle: { ...current.vehicle, estimatedValue: Number(event.target.value) || 0 },
+                        }))
+                      }
+                    />
+                  </div>
+                </Field>
+                <Field label="Situação do veículo">
+                  <select
+                    className={inputClassName}
+                    value={props.settings.vehicle.ownershipStatus}
+                    onChange={(event) =>
+                      props.setSettings((current) => ({
+                        ...current,
+                        vehicle: {
+                          ...current.vehicle,
+                          monthlyOwnershipCost:
+                            event.target.value === "quitado" ? 0 : current.vehicle.monthlyOwnershipCost,
+                          ownershipStatus: event.target.value as VehicleProfile["ownershipStatus"],
+                        },
+                      }))
+                    }
+                  >
+                    <option value="quitado">Quitado</option>
+                    <option value="financiado">Em financiamento</option>
+                    <option value="alugado">Alugado</option>
+                  </select>
+                </Field>
+                <Field
+                  label={
+                    props.settings.vehicle.ownershipStatus === "alugado"
+                      ? "Valor do aluguel mensal"
+                      : "Valor da parcela mensal"
+                  }
+                >
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-neutral-500">
+                      R$
+                    </span>
+                    <input
+                      className={cn(inputClassName, "pl-11")}
+                      disabled={props.settings.vehicle.ownershipStatus === "quitado"}
+                      step="100"
+                      type="number"
+                      value={
+                        props.settings.vehicle.ownershipStatus === "quitado"
+                          ? 0
+                          : props.settings.vehicle.monthlyOwnershipCost
+                      }
+                      onChange={(event) =>
+                        props.setSettings((current) => ({
+                          ...current,
+                          vehicle: {
+                            ...current.vehicle,
+                            monthlyOwnershipCost: Number(event.target.value) || 0,
+                          },
                         }))
                       }
                     />
