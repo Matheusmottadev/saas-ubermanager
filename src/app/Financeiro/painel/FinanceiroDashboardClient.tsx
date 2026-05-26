@@ -8,6 +8,7 @@ import {
   Calendar,
   Car,
   ChevronRight,
+  CircleHelp,
   CircleDollarSign,
   Clock3,
   CreditCard,
@@ -2839,43 +2840,38 @@ function CorridasPage(props: {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+      <div className="grid gap-3 xl:grid-cols-[max-content_minmax(0,1fr)] xl:items-center">
         <PlatformTabs current={props.corridasFilter} onChange={props.onFilterChange} visiblePlatforms={props.visiblePlatforms} />
-        <SurfaceCard className="space-y-3 p-4">
-          <div>
-            <div className="text-sm font-semibold text-white">Régua de status</div>
-            <div className="mt-1 text-xs leading-5 text-neutral-500">
-              Defina a referência de {filterLabel} em R$/km. Abaixo do mínimo fica ruim, acima do máximo fica excelente.
+        <SurfaceCard className="p-3">
+          <div className="flex flex-wrap items-end gap-2.5 xl:justify-end">
+            <div className="flex items-center gap-2 pb-1">
+              <div className="text-sm font-semibold text-white">Régua de status</div>
+              <InfoTooltip
+                text={`A régua de ${filterLabel} usa R$/km. Abaixo do mínimo a corrida fica ruim, acima do máximo ela fica excelente e, entre os dois, aparece como ok.`}
+              />
             </div>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-            <label className="flex flex-col gap-1.5">
+            <label className="flex min-w-[150px] flex-col gap-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Ruim abaixo de</span>
               <input
-                className="h-11 rounded-[0.95rem] border border-white/10 bg-[#181818] px-3.5 text-sm text-white outline-none transition focus:border-white/20"
+                className="h-10 rounded-[0.95rem] border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none transition focus:border-white/20"
                 step="0.1"
                 type="number"
                 value={badBelowDraft}
                 onChange={(event) => setBadBelowDraft(event.target.value)}
               />
             </label>
-            <label className="flex flex-col gap-1.5">
+            <label className="flex min-w-[150px] flex-col gap-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">Bom acima de</span>
               <input
-                className="h-11 rounded-[0.95rem] border border-white/10 bg-[#181818] px-3.5 text-sm text-white outline-none transition focus:border-white/20"
+                className="h-10 rounded-[0.95rem] border border-white/10 bg-[#181818] px-3 text-sm text-white outline-none transition focus:border-white/20"
                 step="0.1"
                 type="number"
                 value={goodAboveDraft}
                 onChange={(event) => setGoodAboveDraft(event.target.value)}
               />
             </label>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] leading-5 text-neutral-500">
-              O que ficar entre os dois valores aparece como <span className="font-semibold text-amber-300">ok</span>.
-            </div>
             <button
-              className="rounded-xl bg-[#f5f4f0] px-3.5 py-2 text-sm font-semibold text-black transition hover:opacity-90"
+              className="h-10 rounded-xl bg-[#f5f4f0] px-3.5 text-sm font-semibold text-black transition hover:opacity-90"
               type="button"
               onClick={() =>
                 props.onSaveQualityThresholds(props.corridasFilter, {
@@ -4578,6 +4574,22 @@ function PlatformTab(props: {
     >
       {props.label}
     </button>
+  );
+}
+
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <div className="group relative">
+      <button
+        className="flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-[#181818] text-neutral-500 transition hover:text-white"
+        type="button"
+      >
+        <CircleHelp className="h-3.5 w-3.5" />
+      </button>
+      <div className="pointer-events-none absolute right-0 top-[calc(100%+8px)] z-20 w-[240px] rounded-xl border border-white/10 bg-[#151515] px-3 py-2 text-[11px] leading-5 text-neutral-300 opacity-0 shadow-2xl transition group-hover:opacity-100">
+        {text}
+      </div>
+    </div>
   );
 }
 
