@@ -47,6 +47,7 @@ export type PlatformMetrics = {
 };
 
 export type Ride = {
+  createdAt?: string;
   distanceKm: number;
   earnings: number;
   id: string;

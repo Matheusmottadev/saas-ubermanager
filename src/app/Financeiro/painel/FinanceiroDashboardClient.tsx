@@ -42,7 +42,7 @@ import {
   monthlyReports,
   pageLabels,
   platformMeta,
-  platformMetrics,
+  platformMetrics as basePlatformMetrics,
   platformOrder,
   popularBrazilVehicles,
   settingsSections,
@@ -51,6 +51,7 @@ import {
   type MaintenanceTask,
   type PageKey,
   type PlatformKey,
+  type PlatformMetrics,
   type Ride,
   type VehicleDatabaseEntry,
   type VehicleFuelKind,
@@ -383,6 +384,117 @@ function getVehicleUiCopy(vehicle: VehicleProfile) {
     metricIcon: isElectric || isHybrid ? <Zap className="h-3.5 w-3.5" /> : <Droplets className="h-3.5 w-3.5" />,
     vehicleSubtitle: `${getFuelKindLabel(vehicle.fuelKind)} · ${vehicle.transmission} · ${vehicle.segment}`,
   };
+}
+
+function getRideDate(ride: Ride) {
+  if (!ride.createdAt) {
+    return new Date();
+  }
+
+  const parsed = new Date(ride.createdAt);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function isSameCalendarDay(left: Date, right: Date) {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+function isSameCalendarMonth(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
+}
+
+function getRideDurationMinutes(ride: Ride) {
+  const matched = ride.timeLabel.match(/· (\d+) min/);
+  if (matched) {
+    return Number(matched[1]) || 0;
+  }
+
+  return Math.max(Math.round(ride.distanceKm * 3), 0);
+}
+
+function createEmptyPlatformMetricsMap() {
+  return platformOrder.reduce(
+    (accumulator, platform) => ({
+      ...accumulator,
+      [platform]: { ...basePlatformMetrics[platform] },
+    }),
+    {} as Record<PlatformKey, PlatformMetrics>,
+  );
+}
+
+function buildPlatformMetricsMap(params: {
+  costs: CostItem[];
+  rides: Ride[];
+  vehicle: VehicleProfile;
+}) {
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const previousMonthReference = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  const metrics = createEmptyPlatformMetricsMap();
+  const monthGrossTotal = params.rides.reduce((total, ride) => {
+    const rideDate = getRideDate(ride);
+    return isSameCalendarMonth(rideDate, now) ? total + ride.earnings : total;
+  }, 0);
+  const totalCosts = sumCost(params.costs);
+
+  for (const platform of platformOrder) {
+    const rides = params.rides.filter((ride) => ride.platform === platform);
+    const todayRides = rides.filter((ride) => isSameCalendarDay(getRideDate(ride), now));
+    const yesterdayRides = rides.filter((ride) => isSameCalendarDay(getRideDate(ride), yesterday));
+    const monthRides = rides.filter((ride) => isSameCalendarMonth(getRideDate(ride), now));
+    const previousMonthRides = rides.filter((ride) => isSameCalendarMonth(getRideDate(ride), previousMonthReference));
+
+    const dayRevenue = todayRides.reduce((total, ride) => total + ride.earnings, 0);
+    const dayKm = todayRides.reduce((total, ride) => total + ride.distanceKm, 0);
+    const monthGross = monthRides.reduce((total, ride) => total + ride.earnings, 0);
+    const monthKm = monthRides.reduce((total, ride) => total + ride.distanceKm, 0);
+    const previousMonthGross = previousMonthRides.reduce((total, ride) => total + ride.earnings, 0);
+    const onlineMinutes = todayRides.reduce((total, ride) => total + getRideDurationMinutes(ride), 0);
+    const allocatedMonthCost = monthGrossTotal > 0 ? totalCosts * (monthGross / monthGrossTotal) : 0;
+    const fuelEstimate = dayKm > 0 && params.vehicle.efficiency > 0
+      ? (dayKm / params.vehicle.efficiency) * params.vehicle.energyCost
+      : 0;
+    const currentGainPerKm = dayKm > 0 ? dayRevenue / dayKm : monthKm > 0 ? monthGross / monthKm : 0;
+    const currentHourly = onlineMinutes > 0 ? dayRevenue / (onlineMinutes / 60) : 0;
+
+    metrics[platform] = {
+      avgDayKm:
+        monthRides.length > 0
+          ? monthKm / Math.max(new Set(monthRides.map((ride) => getRideDate(ride).toDateString())).size, 1)
+          : 0,
+      currentGainPerKm,
+      currentHourly,
+      dayKm,
+      dayNet: Math.max(dayRevenue - allocatedMonthCost, 0),
+      dayRevenue,
+      efficiency: params.vehicle.efficiency,
+      fuelAverage: fuelEstimate,
+      fuelEstimate,
+      hourlyBenchmark: currentHourly,
+      monthCost: allocatedMonthCost,
+      monthGoal: 0,
+      monthGross,
+      monthRides: monthRides.length,
+      onlineMinutes,
+      prevWeekGainPerKm: currentGainPerKm,
+      previousAvgRide: previousMonthRides.length > 0 ? previousMonthGross / previousMonthRides.length : 0,
+      previousMonthGross,
+      previousMonthRides: previousMonthRides.length,
+      ridesToday: todayRides.length,
+      ridesYesterday: yesterdayRides.length,
+      yesterdayRevenue: yesterdayRides.reduce((total, ride) => total + ride.earnings, 0),
+    };
+  }
+
+  return metrics;
 }
 
 function buildNotificationItems(params: {
@@ -863,15 +975,15 @@ function FinanceiroDashboardClient() {
 
   const activePlatformKeys = platformOrder.filter((platform) => activePlatforms[platform]);
 
-  const sumMetric = (key: keyof (typeof platformMetrics)[PlatformKey]) =>
+  const sumMetric = (key: keyof PlatformMetrics) =>
     activePlatformKeys.reduce((total, platform) => total + Number(platformMetrics[platform][key] ?? 0), 0);
 
-  const sumAllPlatformsMetric = (key: keyof (typeof platformMetrics)[PlatformKey]) =>
+  const sumAllPlatformsMetric = (key: keyof PlatformMetrics) =>
     platformOrder.reduce((total, platform) => total + Number(platformMetrics[platform][key] ?? 0), 0);
 
   const weightedAverage = (
-    metricKey: keyof (typeof platformMetrics)[PlatformKey],
-    weightKey: keyof (typeof platformMetrics)[PlatformKey],
+    metricKey: keyof PlatformMetrics,
+    weightKey: keyof PlatformMetrics,
   ) => {
     const totalWeight = sumMetric(weightKey);
     if (!totalWeight) {
@@ -893,6 +1005,11 @@ function FinanceiroDashboardClient() {
   const allCosts = withCostPercentages(
     [depreciationCost, ownershipCost, ...editableCosts].filter(Boolean) as CostItem[],
   );
+  const platformMetrics = buildPlatformMetricsMap({
+    costs: allCosts,
+    rides: editableRides,
+    vehicle: settings.vehicle,
+  });
 
   const dayRevenue = sumMetric("dayRevenue");
   const yesterdayRevenue = sumMetric("yesterdayRevenue");
@@ -1129,6 +1246,7 @@ function FinanceiroDashboardClient() {
         const destination = ride.destination.trim() || "Destino";
 
         return {
+          createdAt: new Date().toISOString(),
           distanceKm,
           earnings,
           id: `ride-${Date.now()}-${index}`,
@@ -1431,6 +1549,7 @@ function FinanceiroDashboardClient() {
                 monthRemaining={monthRemaining}
                 onFilterChange={setDashboardFilter}
                 platformGoals={settings.platformGoals}
+                platformMetrics={platformMetrics}
                 previousGainPerKm={previousGainPerKm}
                 revenueDeltaPct={revenueDeltaPct}
                 rides={dashboardRides.slice(0, 4)}
@@ -1465,6 +1584,7 @@ function FinanceiroDashboardClient() {
                 monthNet={monthNet}
                 monthRevenueDeltaPct={monthRevenueDeltaPct}
                 onAddExpense={openExpenseModal}
+                platformMetrics={platformMetrics}
                 projectionDelta={projectionDelta}
                 projectionValue={monthProjection}
                 profitMarginPct={profitMarginPct}
@@ -1502,6 +1622,7 @@ function FinanceiroDashboardClient() {
                   setSettingsSection("metas");
                 }}
                 platformGoals={settings.platformGoals}
+                platformMetrics={platformMetrics}
                 settingsGoal={monthGoal}
                 visiblePlatforms={activePlatformKeys}
               />
@@ -1903,6 +2024,7 @@ function DashboardPage(props: {
   monthRemaining: number;
   onFilterChange: (value: "all" | PlatformKey) => void;
   platformGoals: Record<PlatformKey, number>;
+  platformMetrics: Record<PlatformKey, PlatformMetrics>;
   previousGainPerKm: number;
   revenueDeltaPct: number;
   rides: Ride[];
@@ -1923,15 +2045,15 @@ function DashboardPage(props: {
       ? platformOrder.filter((platform) => props.visiblePlatforms.includes(platform))
       : [props.dashboardFilter];
 
-  const sumSelectedMetric = (key: keyof (typeof platformMetrics)[PlatformKey]) =>
-    selectedPlatforms.reduce((total, platform) => total + Number(platformMetrics[platform][key] ?? 0), 0);
+  const sumSelectedMetric = (key: keyof PlatformMetrics) =>
+    selectedPlatforms.reduce((total, platform) => total + Number(props.platformMetrics[platform][key] ?? 0), 0);
 
-  const sumMetaMetric = (key: keyof (typeof platformMetrics)[PlatformKey]) =>
-    metaPlatforms.reduce((total, platform) => total + Number(platformMetrics[platform][key] ?? 0), 0);
+  const sumMetaMetric = (key: keyof PlatformMetrics) =>
+    metaPlatforms.reduce((total, platform) => total + Number(props.platformMetrics[platform][key] ?? 0), 0);
 
   const weightedSelectedMetric = (
-    metricKey: keyof (typeof platformMetrics)[PlatformKey],
-    weightKey: keyof (typeof platformMetrics)[PlatformKey],
+    metricKey: keyof PlatformMetrics,
+    weightKey: keyof PlatformMetrics,
   ) => {
     const totalWeight = sumSelectedMetric(weightKey);
     if (!totalWeight) {
@@ -1940,8 +2062,8 @@ function DashboardPage(props: {
 
     return (
       selectedPlatforms.reduce((total, platform) => {
-        const metric = Number(platformMetrics[platform][metricKey] ?? 0);
-        const weight = Number(platformMetrics[platform][weightKey] ?? 0);
+        const metric = Number(props.platformMetrics[platform][metricKey] ?? 0);
+        const weight = Number(props.platformMetrics[platform][weightKey] ?? 0);
         return total + metric * weight;
       }, 0) / totalWeight
     );
@@ -1963,7 +2085,7 @@ function DashboardPage(props: {
   const selectedYesterdayRevenue =
     props.dashboardFilter === "all"
       ? props.yesterdayRevenue
-      : selectedPlatforms.reduce((total, platform) => total + platformMetrics[platform].yesterdayRevenue, 0);
+      : selectedPlatforms.reduce((total, platform) => total + props.platformMetrics[platform].yesterdayRevenue, 0);
 
   const selectedRevenueDeltaPct = selectedYesterdayRevenue
     ? ((selectedDayRevenue - selectedYesterdayRevenue) / selectedYesterdayRevenue) * 100
@@ -2211,11 +2333,11 @@ function DashboardPage(props: {
         </div>
         <div className="mt-5 grid gap-3 lg:grid-cols-4">
           {metaPlatforms.map((platform) => {
-            const width = metaGoal ? (platformMetrics[platform].monthGross / metaGoal) * 100 : 0;
+            const width = metaGoal ? (props.platformMetrics[platform].monthGross / metaGoal) * 100 : 0;
             return (
               <div key={platform} className="rounded-2xl bg-[#252525] p-4">
                 <div className="text-xs text-neutral-500">{platformMeta[platform].label}</div>
-                <div className="mt-1 text-2xl font-extrabold text-white">{formatCurrency(platformMetrics[platform].monthGross)}</div>
+                <div className="mt-1 text-2xl font-extrabold text-white">{formatCurrency(props.platformMetrics[platform].monthGross)}</div>
                 <div className="mt-3 h-1.5 rounded-full bg-black/20">
                   <div
                     className="h-1.5 rounded-full"
@@ -2459,6 +2581,7 @@ function FinanceiroPage(props: {
   monthCost: number;
   monthGross: number;
   monthNet: number;
+  platformMetrics: Record<PlatformKey, PlatformMetrics>;
   monthRevenueDeltaPct: number;
   onAddExpense: () => void;
   projectionDelta: number;
@@ -2566,7 +2689,7 @@ function FinanceiroPage(props: {
           </div>
           <div className="space-y-4">
             {props.visiblePlatforms.map((platform) => {
-              const value = platformMetrics[platform].monthGross;
+              const value = props.platformMetrics[platform].monthGross;
               const share = props.monthGross ? (value / props.monthGross) * 100 : 0;
               return (
                 <div key={platform}>
@@ -2591,7 +2714,7 @@ function FinanceiroPage(props: {
             <div className="mb-3 text-sm font-semibold text-white">Ranking ganho/km por plataforma</div>
             <div className="space-y-2">
               {[...props.visiblePlatforms]
-                .sort((left, right) => platformMetrics[right].currentGainPerKm - platformMetrics[left].currentGainPerKm)
+                .sort((left, right) => props.platformMetrics[right].currentGainPerKm - props.platformMetrics[left].currentGainPerKm)
                 .map((platform, index) => (
                   <div key={platform} className="flex items-center gap-3 rounded-2xl bg-[#232323] px-4 py-3">
                     <div className="w-4 text-sm font-semibold text-neutral-500">{index + 1}</div>
@@ -2601,11 +2724,11 @@ function FinanceiroPage(props: {
                         className="h-2 rounded-full"
                         style={{
                           backgroundColor: platformMeta[platform].color,
-                          width: `${(platformMetrics[platform].currentGainPerKm / 3) * 100}%`,
+                          width: `${(props.platformMetrics[platform].currentGainPerKm / 3) * 100}%`,
                         }}
                       />
                     </div>
-                    <div className="text-sm font-semibold text-white">{formatCurrency(platformMetrics[platform].currentGainPerKm, 2)}</div>
+                    <div className="text-sm font-semibold text-white">{formatCurrency(props.platformMetrics[platform].currentGainPerKm, 2)}</div>
                   </div>
                 ))}
             </div>
@@ -3008,6 +3131,7 @@ function MetasPage(props: {
   monthRemaining: number;
   onEditGoals: () => void;
   platformGoals: Record<PlatformKey, number>;
+  platformMetrics: Record<PlatformKey, PlatformMetrics>;
   settingsGoal: number;
   visiblePlatforms: PlatformKey[];
 }) {
@@ -3060,7 +3184,7 @@ function MetasPage(props: {
           <div className="space-y-4">
             {props.visiblePlatforms.map((platform) => {
               const target = props.platformGoals[platform] || 0;
-              const current = platformMetrics[platform].monthGross;
+              const current = props.platformMetrics[platform].monthGross;
               const progress = target > 0 ? Math.min((current / target) * 100, 100) : 0;
               const gap = Math.max(target - current, 0);
 
@@ -4225,10 +4349,6 @@ function StatChip({
 
 function sumCost(costs: CostItem[]) {
   return costs.reduce((total, item) => total + item.amount, 0);
-}
-
-function sumPlatformCost(platforms: PlatformKey[]) {
-  return platforms.reduce((total, platform) => total + platformMetrics[platform].monthCost, 0);
 }
 
 function PanelIcon({ className }: { className?: string }) {
