@@ -57,7 +57,6 @@ import {
   type VehicleFuelKind,
   type VehiclePowertrain,
   upcomingEvents,
-  weeklyRevenueBars,
 } from "./data";
 import RegisterModal, { type RegisterModalPayload } from "./RegisterModal";
 import {
@@ -414,6 +413,26 @@ function getRideDurationMinutes(ride: Ride) {
   }
 
   return Math.max(Math.round(ride.distanceKm * 3), 0);
+}
+
+function getRideDurationBreakdown(ride: Ride) {
+  const matched = ride.timeLabel.match(/· (\d+) min/);
+  if (matched) {
+    return {
+      estimatedMinutes: 0,
+      realMinutes: Number(matched[1]) || 0,
+    };
+  }
+
+  return {
+    estimatedMinutes: Math.max(Math.round(ride.distanceKm * 3), 0),
+    realMinutes: 0,
+  };
+}
+
+function formatShortWeekday(date: Date) {
+  const label = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+  return label.charAt(0).toUpperCase() + label.slice(1, 3);
 }
 
 function createEmptyPlatformMetricsMap() {
@@ -1552,7 +1571,7 @@ function FinanceiroDashboardClient() {
                 platformMetrics={platformMetrics}
                 previousGainPerKm={previousGainPerKm}
                 revenueDeltaPct={revenueDeltaPct}
-                rides={dashboardRides.slice(0, 4)}
+                rides={dashboardRides}
                 ridesToday={ridesToday}
                 ridesYesterday={ridesYesterday}
                 vehicleUi={vehicleUi}
@@ -2102,13 +2121,30 @@ function DashboardPage(props: {
   const metaRemaining = Math.max(metaGoal - metaNet, 0);
   const metaProjection = metaNet * PROJECTION_MULTIPLIER;
 
-  const weeklyRevenueSeries = weeklyRevenueBars.map((bar) => {
-    const uber = selectedPlatforms.includes("uber") ? bar.uber : 0;
-    const n99 = selectedPlatforms.includes("99") ? bar.n99 : 0;
-    const indrive = selectedPlatforms.includes("indrive") ? bar.indrive : 0;
+  const selectedPlatformSet = new Set(selectedPlatforms);
+  const historyDays = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    return date;
+  });
+
+  const weeklyRevenueSeries = historyDays.map((date) => {
+    const rides = props.rides.filter(
+      (ride) => selectedPlatformSet.has(ride.platform) && isSameCalendarDay(getRideDate(ride), date),
+    );
+    const uber = rides
+      .filter((ride) => ride.platform === "uber")
+      .reduce((total, ride) => total + ride.earnings, 0);
+    const n99 = rides
+      .filter((ride) => ride.platform === "99")
+      .reduce((total, ride) => total + ride.earnings, 0);
+    const indrive = rides
+      .filter((ride) => ride.platform === "indrive")
+      .reduce((total, ride) => total + ride.earnings, 0);
 
     return {
-      day: bar.day,
+      day: isSameCalendarDay(date, new Date()) ? "Hoje" : formatShortWeekday(date),
       indrive,
       n99,
       total: uber + n99 + indrive,
@@ -2125,6 +2161,35 @@ function DashboardPage(props: {
   const selectedAvgRideValue = selectedRidesToday ? selectedDayRevenue / selectedRidesToday : 0;
 
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+  const rideHistorySnapshots = historyDays.map((date) => {
+    const rides = props.rides.filter(
+      (ride) => selectedPlatformSet.has(ride.platform) && isSameCalendarDay(getRideDate(ride), date),
+    );
+    const revenueWithRealTime = rides.reduce((total, ride) => {
+      const breakdown = getRideDurationBreakdown(ride);
+      return breakdown.realMinutes > 0 ? total + ride.earnings : total;
+    }, 0);
+    const revenueEstimatedTime = rides.reduce((total, ride) => {
+      const breakdown = getRideDurationBreakdown(ride);
+      return breakdown.realMinutes === 0 ? total + ride.earnings : total;
+    }, 0);
+    const onlineRealMinutes = rides.reduce((total, ride) => total + getRideDurationBreakdown(ride).realMinutes, 0);
+    const onlineEstimatedMinutes = rides.reduce(
+      (total, ride) => total + getRideDurationBreakdown(ride).estimatedMinutes,
+      0,
+    );
+
+    return {
+      day: isSameCalendarDay(date, new Date()) ? "Hoje" : formatShortWeekday(date),
+      onlineEstimatedMinutes,
+      onlineMinutes: onlineRealMinutes + onlineEstimatedMinutes,
+      onlineRealMinutes,
+      revenue: revenueWithRealTime + revenueEstimatedTime,
+      revenueEstimatedTime,
+      revenueWithRealTime,
+    };
+  });
 
   const dailySnapshots = weeklyRevenueSeries.map((item) => {
     if (item.day === "Hoje") {
@@ -2192,6 +2257,50 @@ function DashboardPage(props: {
       }));
     };
 
+  const buildSplitHistoryBars = (
+    snapshots: Array<{
+      day: string;
+      estimated: number;
+      real: number;
+      total: number;
+    }>,
+    formatter: (total: number) => string,
+    prefix: string,
+  ) =>
+    snapshots.map((snapshot) => ({
+      highlight: snapshot.day === "Hoje" && snapshot.total > 0,
+      id: `${prefix}-${snapshot.day}`,
+      label: snapshot.day,
+      segments: [
+        { colorClassName: "bg-neutral-500/80", value: snapshot.estimated },
+        { colorClassName: "bg-lime-400", value: snapshot.real },
+      ],
+      text: formatter(snapshot.total),
+      value: snapshot.total,
+    }));
+
+  const revenueHistoryBars = buildSplitHistoryBars(
+    rideHistorySnapshots.map((snapshot) => ({
+      day: snapshot.day,
+      estimated: snapshot.revenueEstimatedTime,
+      real: snapshot.revenueWithRealTime,
+      total: snapshot.revenue,
+    })),
+    (total) => formatCompactValue(total),
+    "revenue-split",
+  );
+
+  const onlineHistoryBars = buildSplitHistoryBars(
+    rideHistorySnapshots.map((snapshot) => ({
+      day: snapshot.day,
+      estimated: snapshot.onlineEstimatedMinutes,
+      real: snapshot.onlineRealMinutes,
+      total: snapshot.onlineMinutes,
+    })),
+    (total) => formatHours(total),
+    "online-split",
+  );
+
   const insightToneStyles = {
     amber: {
       badge: "bg-amber-400/10 text-amber-300",
@@ -2223,7 +2332,11 @@ function DashboardPage(props: {
         <MetricCard
           icon={<CircleDollarSign className="h-3.5 w-3.5" />}
           label="Faturamento do dia"
-          metricBars={buildHistoryBars((snapshot) => formatCompactValue(snapshot.revenue), "revenue")}
+          legendItems={[
+            { colorClassName: "bg-lime-400", label: "Com horário" },
+            { colorClassName: "bg-neutral-500/80", label: "Sem horário" },
+          ]}
+          metricBars={revenueHistoryBars}
           subtitle={`vs ontem ${formatCurrency(selectedYesterdayRevenue)}`}
           tone="up"
           value={formatCurrency(selectedDayRevenue)}
@@ -2289,7 +2402,11 @@ function DashboardPage(props: {
         <MetricCard
           icon={<Clock3 className="h-3.5 w-3.5" />}
           label="Horas online"
-          metricBars={buildHistoryBars((snapshot) => formatHours(snapshot.onlineMinutes), "onlineMinutes")}
+          legendItems={[
+            { colorClassName: "bg-lime-400", label: "Reais" },
+            { colorClassName: "bg-neutral-500/80", label: "Estimadas" },
+          ]}
+          metricBars={onlineHistoryBars}
           subtitle={`eficiência ${Math.round(selectedEfficiency)}%`}
           tone="neutral"
           value={formatHours(selectedOnlineMinutes)}
@@ -2511,7 +2628,7 @@ function DashboardPage(props: {
           </button>
         </div>
         <div className="space-y-2">
-          {props.rides.map((ride) => (
+          {props.rides.slice(0, 4).map((ride) => (
             <RideRow key={ride.id} ride={ride} />
           ))}
         </div>
@@ -4029,9 +4146,17 @@ function MetricCard(props: {
   contrast?: boolean;
   icon: React.ReactNode;
   label: string;
+  legendItems?: Array<{
+    colorClassName: string;
+    label: string;
+  }>;
   metricBars?: Array<{
     id: string;
     label: string;
+    segments?: Array<{
+      colorClassName: string;
+      value: number;
+    }>;
     text: string;
     value: number;
   }>;
@@ -4047,9 +4172,21 @@ function MetricCard(props: {
         props.contrast ? "bg-[#f5f4f0] text-black" : "bg-[#1f1f1f] text-white",
       )}
     >
-      <div className={cn("mb-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.12em]", props.contrast ? "text-neutral-500" : "text-neutral-500")}>
-        {props.icon}
-        {props.label}
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className={cn("flex items-center gap-2 text-[11px] uppercase tracking-[0.12em]", props.contrast ? "text-neutral-500" : "text-neutral-500")}>
+          {props.icon}
+          {props.label}
+        </div>
+        {props.legendItems && props.legendItems.length > 0 && (
+          <div className="flex flex-wrap items-center justify-end gap-2 text-[9px] font-medium uppercase tracking-[0.12em] text-neutral-500">
+            {props.legendItems.map((item) => (
+              <span key={item.label} className="inline-flex items-center gap-1.5">
+                <span className={cn("h-2 w-2 rounded-full", item.colorClassName)} />
+                {item.label}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       <div
         className={cn("text-[2.15rem] font-black tracking-[-0.08em]", props.contrast ? "text-black" : "text-white")}
@@ -4081,11 +4218,20 @@ function MetricBarStrip(props: {
     highlight?: boolean;
     id: string;
     label: string;
+    segments?: Array<{
+      colorClassName: string;
+      value: number;
+    }>;
     text: string;
     value: number;
   }>;
 }) {
-  const maxValue = Math.max(...props.items.map((item) => item.value), 1);
+  const maxValue = Math.max(
+    ...props.items.map((item) =>
+      item.segments ? item.segments.reduce((total, segment) => total + segment.value, 0) : item.value,
+    ),
+    1,
+  );
   const chartHeight = 56;
   const minHeight = 16;
 
@@ -4093,7 +4239,10 @@ function MetricBarStrip(props: {
     <div className="mt-5">
       <div className="flex h-[80px] items-end gap-0.5">
         {props.items.map((item) => {
-          const height = item.value > 0 ? Math.max((item.value / maxValue) * chartHeight, minHeight) : 0;
+          const totalValue = item.segments
+            ? item.segments.reduce((total, segment) => total + segment.value, 0)
+            : item.value;
+          const height = totalValue > 0 ? Math.max((totalValue / maxValue) * chartHeight, minHeight) : 0;
 
           return (
             <div key={item.id} className="flex min-w-0 flex-1 flex-col items-center gap-1">
@@ -4105,6 +4254,21 @@ function MetricBarStrip(props: {
                   )}
                   style={{ height: `${height}px` }}
                 >
+                  {item.segments && item.segments.length > 0 ? (
+                    <div className="flex h-full w-full flex-col-reverse justify-end">
+                      {item.segments.map((segment, index) =>
+                        segment.value > 0 ? (
+                          <div
+                            key={`${item.id}-segment-${index}`}
+                            className={cn("w-full", segment.colorClassName)}
+                            style={{
+                              height: `${(segment.value / totalValue) * 100}%`,
+                            }}
+                          />
+                        ) : null,
+                      )}
+                    </div>
+                  ) : null}
                   <div
                     className={cn(
                       "absolute inset-0 flex items-center justify-center px-1 text-center text-[9px] font-medium leading-none",
