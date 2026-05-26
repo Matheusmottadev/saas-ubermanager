@@ -39,15 +39,12 @@ import {
   fontOptions,
   heatmapLabels,
   heatmapRows,
-  maintenanceTasks,
-  monthlyCosts,
   monthlyReports,
   pageLabels,
   platformMeta,
   platformMetrics,
   platformOrder,
   popularBrazilVehicles,
-  rides,
   settingsSections,
   type CostItem,
   type FontOptionKey,
@@ -62,17 +59,21 @@ import {
   weeklyRevenueBars,
 } from "./data";
 import RegisterModal, { type RegisterModalPayload } from "./RegisterModal";
+import {
+  createInitialDashboardState,
+  createVehicleProfile,
+  defaultPlatforms,
+  defaultSettings,
+  type DashboardStatePayload,
+  type ScheduledMaintenanceItem,
+  type SettingsState,
+  type VehicleProfile,
+} from "@/lib/dashboard-state";
 
 const SIDEBAR_STORAGE_KEY = "urbann-sidebar-collapsed";
 const FONT_STORAGE_KEY = "urbann-dashboard-display-font";
 const PLATFORM_STORAGE_KEY = "urbann-active-platforms";
 const PROJECTION_MULTIPLIER = 1.375;
-
-const defaultPlatforms: Record<PlatformKey, boolean> = {
-  "99": true,
-  indrive: true,
-  uber: true,
-};
 
 const fontFamilyMap: Record<FontOptionKey, string> = {
   bricolage: "var(--panel-font-bricolage)",
@@ -82,34 +83,6 @@ const fontFamilyMap: Record<FontOptionKey, string> = {
 };
 
 type SettingsSectionKey = (typeof settingsSections)[number]["key"];
-
-type VehicleProfile = {
-  annualDepreciationPct: number;
-  brand: string;
-  efficiency: number;
-  efficiencyUnit: "km/L" | "km/kWh";
-  energyCost: number;
-  estimatedValue: number;
-  fuelKind: VehicleFuelKind;
-  model: string;
-  powertrain: VehiclePowertrain;
-  segment: string;
-  selectedVehicleId: string;
-  transmission: string;
-  version: string;
-  year: number;
-};
-
-type SettingsState = {
-  accent: "green" | "red" | "white";
-  autoFuel: boolean;
-  goalAlerts: boolean;
-  multiSession: boolean;
-  notifications: boolean;
-  platformGoals: Record<PlatformKey, number>;
-  twoFactor: boolean;
-  vehicle: VehicleProfile;
-};
 
 type ExpenseDraft = {
   amount: string;
@@ -137,56 +110,11 @@ type MaintenanceDraft = {
   label: string;
 };
 
-type ScheduledMaintenanceItem = {
-  dueDate: string;
-  dueKm: string;
-  id: string;
-  label: string;
-  subtitle: string;
-};
-
 type NotificationItem = {
   description: string;
   id: string;
   title: string;
   tone: "danger" | "neutral" | "success" | "warning";
-};
-
-const defaultVehicleEntry =
-  popularBrazilVehicles.find((vehicle) => vehicle.id === "toyota-corolla-2025") ?? popularBrazilVehicles[0];
-
-function createVehicleProfile(entry: VehicleDatabaseEntry): VehicleProfile {
-  return {
-    annualDepreciationPct: entry.annualDepreciationPct,
-    brand: entry.brand,
-    efficiency: entry.defaultEfficiency,
-    efficiencyUnit: entry.efficiencyUnit,
-    energyCost: entry.defaultEnergyCost,
-    estimatedValue: entry.estimatedValue,
-    fuelKind: entry.fuelKind,
-    model: entry.model,
-    powertrain: entry.powertrain,
-    segment: entry.segment,
-    selectedVehicleId: entry.id,
-    transmission: entry.transmission,
-    version: entry.version,
-    year: entry.year,
-  };
-}
-
-const defaultSettings: SettingsState = {
-  accent: "white",
-  autoFuel: true,
-  goalAlerts: true,
-  multiSession: true,
-  notifications: true,
-  platformGoals: {
-    "99": 1500,
-    indrive: 500,
-    uber: 3000,
-  },
-  twoFactor: false,
-  vehicle: createVehicleProfile(defaultVehicleEntry),
 };
 
 const expenseCategoryMeta: Record<
@@ -765,27 +693,22 @@ function readStoredFont() {
 
 function FinanceiroDashboardClient() {
   const router = useRouter();
+  const initialDashboardState = createInitialDashboardState();
   const [currentPage, setCurrentPage] = useState<PageKey>("dashboard");
   const [dashboardFilter, setDashboardFilter] = useState<"all" | PlatformKey>("all");
   const [corridasFilter, setCorridasFilter] = useState<"all" | PlatformKey>("all");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarOpenMobile, setSidebarOpenMobile] = useState(false);
-  const [activePlatforms, setActivePlatforms] = useState<Record<PlatformKey, boolean>>(defaultPlatforms);
+  const [activePlatforms, setActivePlatforms] = useState<Record<PlatformKey, boolean>>(initialDashboardState.activePlatforms);
   const [savedFont, setSavedFont] = useState<FontOptionKey>("syne");
   const [draftFont, setDraftFont] = useState<FontOptionKey>("syne");
   const [settingsSection, setSettingsSection] = useState<SettingsSectionKey>("perfil");
-  const [settings, setSettings] = useState<SettingsState>(defaultSettings);
-  const [savedSettings, setSavedSettings] = useState<SettingsState>(defaultSettings);
-  const [editableRides, setEditableRides] = useState<Ride[]>(rides);
-  const [editableCosts, setEditableCosts] = useState<CostItem[]>(monthlyCosts);
+  const [settings, setSettings] = useState<SettingsState>(initialDashboardState.settings);
+  const [savedSettings, setSavedSettings] = useState<SettingsState>(initialDashboardState.settings);
+  const [editableRides, setEditableRides] = useState<Ride[]>(initialDashboardState.rides);
+  const [editableCosts, setEditableCosts] = useState<CostItem[]>(initialDashboardState.costs);
   const [scheduledMaintenance, setScheduledMaintenance] = useState<ScheduledMaintenanceItem[]>(
-    maintenanceTasks.map((task) => ({
-      dueDate: "",
-      dueKm: "",
-      id: task.id,
-      label: task.label,
-      subtitle: task.subtitle,
-    })),
+    initialDashboardState.scheduledMaintenance,
   );
   const [editingRide, setEditingRide] = useState<Ride | null>(null);
   const [registerModalOpen, setRegisterModalOpen] = useState(false);
@@ -795,6 +718,7 @@ function FinanceiroDashboardClient() {
   const [maintenanceDraft, setMaintenanceDraft] = useState<MaintenanceDraft>(createEmptyMaintenanceDraft());
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [seenNotificationKey, setSeenNotificationKey] = useState("");
+  const [isStateLoaded, setIsStateLoaded] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -803,6 +727,49 @@ function FinanceiroDashboardClient() {
     setSavedFont(storedFont);
     setDraftFont(storedFont);
     setActivePlatforms(readStoredPlatforms());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDashboardState() {
+      try {
+        const response = await fetch("/api/financeiro/state", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(`state GET failed with status ${response.status}`);
+        }
+
+        const data = (await response.json()) as DashboardStatePayload;
+        if (cancelled) {
+          return;
+        }
+
+        setActivePlatforms({
+          ...defaultPlatforms,
+          ...(data.activePlatforms ?? {}),
+        });
+        setSettings(data.settings ?? defaultSettings);
+        setSavedSettings(data.settings ?? defaultSettings);
+        setEditableRides(Array.isArray(data.rides) ? data.rides : []);
+        setEditableCosts(Array.isArray(data.costs) ? data.costs : []);
+        setScheduledMaintenance(Array.isArray(data.scheduledMaintenance) ? data.scheduledMaintenance : []);
+      } catch (error) {
+        console.error("dashboard state load failed", error);
+      } finally {
+        if (!cancelled) {
+          setIsStateLoaded(true);
+        }
+      }
+    }
+
+    void loadDashboardState();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -841,6 +808,34 @@ function FinanceiroDashboardClient() {
     const timeout = window.setTimeout(() => setToastMessage(null), 2400);
     return () => window.clearTimeout(timeout);
   }, [toastMessage]);
+
+  const persistedStateSnapshot = JSON.stringify({
+    activePlatforms,
+    costs: editableCosts,
+    rides: editableRides,
+    scheduledMaintenance,
+    settings,
+  } satisfies DashboardStatePayload);
+
+  useEffect(() => {
+    if (!isStateLoaded) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void fetch("/api/financeiro/state", {
+        body: persistedStateSnapshot,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        method: "PUT",
+      }).catch((error) => {
+        console.error("dashboard state save failed", error);
+      });
+    }, 450);
+
+    return () => window.clearTimeout(timeout);
+  }, [isStateLoaded, persistedStateSnapshot]);
 
   const activePlatformKeys = platformOrder.filter((platform) => activePlatforms[platform]);
 
