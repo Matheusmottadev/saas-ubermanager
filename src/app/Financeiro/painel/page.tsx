@@ -1,6 +1,8 @@
 import { Bricolage_Grotesque, Sora, Space_Grotesk, Syne } from "next/font/google";
+import { redirect } from "next/navigation";
 
 import FinanceiroDashboardClient from "./FinanceiroDashboardClient";
+import { getCurrentUser } from "@/lib/auth";
 
 const syne = Syne({
   subsets: ["latin"],
@@ -26,7 +28,12 @@ const bricolage = Bricolage_Grotesque({
   variable: "--panel-font-bricolage",
 });
 
-export default function FinanceiroPainelPage() {
+export default async function FinanceiroPainelPage() {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/Financeiro");
+  }
+
   return (
     <div
       className={`${syne.variable} ${sora.variable} ${spaceGrotesk.variable} ${bricolage.variable}`}

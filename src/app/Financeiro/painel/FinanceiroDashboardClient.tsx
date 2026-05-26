@@ -1000,9 +1000,18 @@ function FinanceiroDashboardClient() {
   };
 
   const handleSignOut = () => {
-    setNotificationsOpen(false);
-    setSidebarOpenMobile(false);
-    router.push("/Financeiro");
+    void fetch("/api/auth/logout", {
+      method: "POST",
+    })
+      .catch((error) => {
+        console.error("logout failed", error);
+      })
+      .finally(() => {
+        setNotificationsOpen(false);
+        setSidebarOpenMobile(false);
+        router.push("/Financeiro");
+        router.refresh();
+      });
   };
 
   const openExpenseModal = () => {

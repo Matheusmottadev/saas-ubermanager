@@ -14,6 +14,7 @@
     "@prisma/client": "^6.11.1",
     "@mercadopago/sdk-react": "^1.0.7",
     "@swc/helpers": "^0.5.15",
+    "argon2": "^0.41.1",
     "lucide-react": "^1.16.0",
     "mercadopago": "^2.12.1",
     "next": "15.5.18",
