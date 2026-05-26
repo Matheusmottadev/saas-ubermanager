@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import FinanceiroDashboardClient from "./FinanceiroDashboardClient";
 import { getCurrentUser } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 const syne = Syne({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],

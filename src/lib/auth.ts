@@ -82,13 +82,13 @@ export async function createUserSession(userId: string) {
 }
 
 export async function getCurrentSession() {
-  await deleteExpiredSessions();
-
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!token) {
     return null;
   }
+
+  await deleteExpiredSessions();
 
   const session = await prisma.session.findUnique({
     include: {

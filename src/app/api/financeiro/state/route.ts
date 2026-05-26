@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { createInitialDashboardState, normalizeDashboardState } from "@/lib/dashboard-state";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 async function getWorkspaceState(userId: string) {
   const workspace = await prisma.dashboardWorkspace.upsert({
     create: {
