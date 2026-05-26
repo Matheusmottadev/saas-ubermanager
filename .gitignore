@@ -1,0 +1,9 @@
+.next
+node_modules
+node_modules.broken
+npm-debug.log*
+dist
+.DS_Store
+.env.local
+tmp
+tsconfig.tsbuildinfo
