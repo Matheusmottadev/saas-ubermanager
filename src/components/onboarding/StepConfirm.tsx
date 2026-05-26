@@ -4,6 +4,7 @@ import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { computeGoalsTotal } from "@/lib/onboarding";
+import { getPricingSummary } from "@/lib/pricing";
 import type { OnboardingData } from "@/types/onboarding";
 
 interface Props {
@@ -57,6 +58,8 @@ export default function StepConfirm({
   onSubmit,
   submitting,
 }: Props) {
+  const pricingSummary = getPricingSummary(data.plan.selectedPlan);
+
   const [mounted, setMounted] = useState(false);
   const [agreed, setAgreed] = useState(false);
 
@@ -159,15 +162,11 @@ export default function StepConfirm({
       <Section title="Plano">
         <Row
           label="Plano escolhido"
-          value={
-            data.plan.selectedPlan === "pro"
-              ? "Pro · R$24,90 por 2 meses"
-              : "Essencial · R$14,90 por 2 meses"
-          }
+          value={pricingSummary.promoPlanLabel}
         />
         <Row
           label="Condição"
-          value={data.plan.selectedPlan === "pro" ? "7 dias grátis · depois R$29,90/mês" : "7 dias grátis · depois R$19,90/mês"}
+          value={pricingSummary.afterLabel}
         />
       </Section>
       </div>

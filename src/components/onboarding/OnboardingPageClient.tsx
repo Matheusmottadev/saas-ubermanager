@@ -10,6 +10,7 @@ import StepPersonal from "@/components/onboarding/StepPersonal";
 import StepPlan from "@/components/onboarding/StepPlan";
 import StepVehicle from "@/components/onboarding/StepVehicle";
 import { ONBOARDING_STEPS, computeGoalsTotal } from "@/lib/onboarding";
+import { getPricingSummary } from "@/lib/pricing";
 import type { OnboardingData } from "@/types/onboarding";
 
 const INITIAL_DATA: OnboardingData = {
@@ -72,6 +73,7 @@ export default function OnboardingPageClient() {
   const progress = ((stepIndex + 1) / ONBOARDING_STEPS.length) * 100;
   const animationClass = direction === "forward" ? "anim-slideL" : "anim-slideR";
   const totalGoal = computeGoalsTotal(data.goals);
+  const pricingSummary = getPricingSummary(data.plan.selectedPlan);
   const activePlatforms = [
     data.goals.enableUber ? "Uber" : null,
     data.goals.enable99 ? "99" : null,
@@ -218,12 +220,10 @@ export default function OnboardingPageClient() {
               <div className="mt-3 flex items-end justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-white">
-                    {data.plan.selectedPlan === "pro" ? "Pro · 7 dias grátis" : "Essencial · 7 dias grátis"}
+                    {pricingSummary.activeLabel}
                   </p>
                   <p className="mt-1 text-xs" style={{ color: "var(--s5)" }}>
-                    {data.plan.selectedPlan === "pro"
-                      ? "R$24,90 por 2 meses, depois R$29,90."
-                      : "R$14,90 por 2 meses, depois R$19,90."}
+                    {pricingSummary.promoLabel}
                   </p>
                 </div>
                 <ArrowRight size={16} style={{ color: "var(--s6)" }} />

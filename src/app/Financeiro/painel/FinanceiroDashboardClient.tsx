@@ -73,6 +73,7 @@ import {
   type SettingsState,
   type VehicleProfile,
 } from "@/lib/dashboard-state";
+import { pricingPlans } from "@/lib/pricing";
 
 const SIDEBAR_STORAGE_KEY = "urbann-sidebar-collapsed";
 const FONT_STORAGE_KEY = "urbann-dashboard-display-font";
@@ -3091,23 +3092,61 @@ function FinanceiroPage(props: {
 }
 
 function AnalisePage(props: { assistantData: AssistantAnalytics }) {
-  const heatPalette = [
-    "bg-transparent",
-    "bg-[#20321a]",
-    "bg-[#29441f]",
-    "bg-[#335423]",
-    "bg-[#427129]",
-    "bg-[#8fc94a]",
-    "bg-[#d4fb7c]",
-  ];
+  const heatPalette = ["transparent", "#20321a", "#29441f", "#335423", "#427129", "#8fc94a", "#d4fb7c"];
+  const weekdayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"] as const;
+  const hourBuckets = [0, 3, 6, 9, 12, 15, 18, 21];
+  const rides = props.assistantData.rides;
+  const regionMap = new Map<string, { value: number; count: number }>();
+  const heatmapAccumulator = weekdayLabels.map((day) => ({ day, values: Array.from({ length: 8 }, () => 0) }));
+
+  rides.forEach((ride) => {
+    const rideDate = getRideDate(ride);
+    const dayIndex = rideDate.getDay();
+    const hour = rideDate.getHours();
+    const bucketIndex = hourBuckets.reduce((bestIndex, bucket, index) => (hour >= bucket ? index : bestIndex), 0);
+    const gainPerKm = ride.distanceKm > 0 ? ride.earnings / ride.distanceKm : 0;
+    const heatLevel = Math.max(1, Math.min(6, Math.round(gainPerKm)));
+    heatmapAccumulator[dayIndex].values[bucketIndex] = Math.max(heatmapAccumulator[dayIndex].values[bucketIndex], heatLevel);
+
+    const originLabel = ride.route.split("→")[0]?.trim() || "Sem região";
+    const current = regionMap.get(originLabel) ?? { count: 0, value: 0 };
+    regionMap.set(originLabel, {
+      count: current.count + 1,
+      value: current.value + gainPerKm,
+    });
+  });
+
+  const computedHeatmapRows = heatmapAccumulator;
   const highlightDays = new Set(
-    [...heatmapRows]
+    [...computedHeatmapRows]
       .sort((left, right) => right.values.reduce((sum, value) => sum + value, 0) - left.values.reduce((sum, value) => sum + value, 0))
       .slice(0, 2)
       .map((row) => row.day),
   );
-  const regionValues = bestRegions.map((region) => Number(region.value.replace("R$", "").replace("/km", "").replace(",", ".")));
+  const computedBestRegions =
+    Array.from(regionMap.entries())
+      .map(([label, data]) => ({
+        label,
+        numericValue: data.value / Math.max(data.count, 1),
+      }))
+      .sort((left, right) => right.numericValue - left.numericValue)
+      .slice(0, 5)
+      .map((item) => ({
+        label: item.label,
+        value: `${formatCurrency(item.numericValue, 2)}/km`,
+      })) || [];
+  const regionValues = computedBestRegions.map((region) => Number(region.value.replace("R$", "").replace("/km", "").replace(",", ".")));
   const topRegionValue = Math.max(...regionValues, 1);
+  const computedUpcomingEvents =
+    [...computedHeatmapRows]
+      .map((row) => ({
+        boost: `${Math.max(...row.values) * 5 || 10}%`,
+        dayScore: row.values.reduce((sum, value) => sum + value, 0),
+        label: `${row.day} com pico às ${hourBuckets[row.values.findIndex((value) => value === Math.max(...row.values))] || 18}h`,
+        subtitle: "Janela com melhor ganho/hora com base nas corridas registradas.",
+      }))
+      .sort((left, right) => right.dayScore - left.dayScore)
+      .slice(0, 3);
   const assistantDataSignature = JSON.stringify({
     costs: props.assistantData.costs.map((cost) => [cost.id, cost.amount]),
     monthGoal: props.assistantData.monthGoal,
@@ -3174,7 +3213,7 @@ function AnalisePage(props: { assistantData: AssistantAnalytics }) {
                   {label}
                 </div>
               ))}
-              {heatmapRows.map((row) => (
+              {computedHeatmapRows.map((row) => (
                 <Fragment key={row.day}>
                   <div
                     className={cn(
@@ -3187,10 +3226,8 @@ function AnalisePage(props: { assistantData: AssistantAnalytics }) {
                   {row.values.map((value, index) => (
                     <div
                       key={`${row.day}-${index}`}
-                      className={cn(
-                        "h-7 rounded-[0.3rem] transition",
-                        value === 0 ? "bg-[#1a1a1a]/20" : heatPalette[value] ?? heatPalette[1],
-                      )}
+                      className="h-7 rounded-[0.3rem] transition"
+                      style={{ backgroundColor: value === 0 ? "rgba(26,26,26,0.2)" : heatPalette[value] ?? heatPalette[1] }}
                     />
                   ))}
                 </Fragment>
@@ -3201,7 +3238,7 @@ function AnalisePage(props: { assistantData: AssistantAnalytics }) {
               <span>Menor</span>
               <div className="flex items-center gap-1">
                 {[1, 2, 3, 4, 5].map((level) => (
-                  <span key={level} className={cn("h-3 w-4 rounded-[0.2rem]", heatPalette[level])} />
+                  <span key={level} className="h-3 w-4 rounded-[0.2rem]" style={{ backgroundColor: heatPalette[level] }} />
                 ))}
               </div>
               <span className="font-medium text-lime-400">Maior ganho</span>
@@ -3217,7 +3254,12 @@ function AnalisePage(props: { assistantData: AssistantAnalytics }) {
             <div className="pt-1 text-sm text-neutral-500">Por ganho/km</div>
           </div>
           <div className="space-y-0.5">
-            {bestRegions.map((region, index) => {
+            {computedBestRegions.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-white/8 bg-[#232323] px-4 py-6 text-sm leading-6 text-neutral-500">
+                Registre mais corridas com origem e destino para eu destacar suas melhores regiões.
+              </div>
+            )}
+            {computedBestRegions.map((region, index) => {
               const regionNumeric = regionValues[index];
               const width = topRegionValue ? (regionNumeric / topRegionValue) * 100 : 0;
               const isLast = index === bestRegions.length - 1;
@@ -3267,7 +3309,12 @@ function AnalisePage(props: { assistantData: AssistantAnalytics }) {
             <div className="pt-1 text-sm text-neutral-500">Alta demanda esperada</div>
           </div>
           <div className="space-y-3">
-            {upcomingEvents.map((event, index) => (
+            {computedUpcomingEvents.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-white/8 bg-[#232323] px-4 py-6 text-sm leading-6 text-neutral-500">
+                Assim que houver histórico suficiente, eu vou sugerir janelas com maior chance de demanda.
+              </div>
+            )}
+            {computedUpcomingEvents.map((event, index) => (
               <div key={event.label} className="flex items-center gap-4 rounded-[1.65rem] bg-[#252525] px-5 py-4">
                 <div className={cn("h-3 w-3 rounded-full", index === 0 ? "bg-[#e36b5c]" : index === 1 ? "bg-[#b96bf7]" : "bg-[#53a5ff]")} />
                 <div className="min-w-0 flex-1">
@@ -4287,8 +4334,14 @@ function ConfiguracoesPage(props: {
           <SurfaceCard>
             <SectionHeader subtitle="Seu acesso atual e opções de upgrade" title="Plano & cobrança" />
             <div className="mt-6 grid gap-3 md:grid-cols-2">
-              <PlanCard active name="Pro" price="R$49" />
-              <PlanCard name="Starter" price="R$29" />
+              {pricingPlans.map((plan) => (
+                <PlanCard
+                  key={plan.id}
+                  active={plan.id === "pro"}
+                  name={plan.name}
+                  price={plan.promoPrice}
+                />
+              ))}
             </div>
           </SurfaceCard>
         )}
@@ -4609,13 +4662,13 @@ function RideRow({ onEdit, ride }: { onEdit?: (ride: Ride) => void; ride: Ride }
         <div className="truncate text-sm font-semibold text-white">{ride.route}</div>
         <div className="truncate text-xs text-neutral-500">{ride.timeLabel}</div>
       </div>
-      <div className="grid grid-cols-[minmax(0,88px)_minmax(0,78px)] gap-5">
-        <div className="px-1 text-center">
+      <div className="grid grid-cols-[max-content_max-content] gap-4">
+        <div className="text-right">
           <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Valor</div>
           <div className="mt-1 text-sm font-semibold text-white">{formatCurrency(ride.earnings, 2)}</div>
           <div className="mt-0.5 text-[11px] text-neutral-500">{formatCurrency(ride.earnings / ride.distanceKm, 2)}/km</div>
         </div>
-        <div className="px-1 text-center">
+        <div className="text-right">
           <div className="text-[10px] uppercase tracking-[0.14em] text-neutral-500">Status</div>
           <div className={cn("mt-1 text-sm font-semibold capitalize", getQualityTone(ride.quality))}>{ride.quality}</div>
           <div className="mt-0.5 text-[11px] text-neutral-500">{ride.distanceKm.toLocaleString("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} km</div>

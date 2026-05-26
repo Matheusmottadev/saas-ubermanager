@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import type { MouseEvent } from "react";
 
+import { pricingPlans } from "@/lib/pricing";
+
 const features = [
   {
     description:
@@ -150,32 +152,6 @@ const heatmapRows = [
   { day: "Dom", values: [1, 0, 0, 1, 3, 3, 4, 3] },
 ] as const;
 
-const pricingPlans = [
-  {
-    badge: "Promo 2 meses",
-    cta: "Assinar Essencial",
-    featured: false,
-    features: ["Registro de corridas", "Controle de despesas", "Metas por plataforma", "Custos fixos do veículo"],
-    name: "Essencial",
-    price: "R$14,90",
-  },
-  {
-    badge: "Mais popular",
-    cta: "Assinar Pro",
-    featured: true,
-    features: [
-      "Todas as plataformas",
-      "Análise inteligente IA",
-      "Mapa de calor",
-      "Relatórios PDF/CSV",
-      "Alertas de manutenção",
-      "Histórico ilimitado",
-    ],
-    name: "Pro",
-    price: "R$24,90",
-  },
-] as const;
-
 const phoneMetrics = [
   {
     accent: "up",
@@ -261,7 +237,7 @@ export default function Home() {
         </p>
         <div className="urbann-hero__actions">
           <Link className="urbann-btn urbann-btn--solid" href="/onboarding">
-            Criar conta grátis
+            Começar com 7 dias grátis
           </Link>
           <a
             className="urbann-btn urbann-btn--ghost"
@@ -532,15 +508,15 @@ export default function Home() {
               <div className="urbann-pricing-card__badge">{plan.badge}</div>
               <div className="urbann-pricing-card__name">{plan.name}</div>
               <div className="urbann-pricing-card__price">
-                {plan.price}
+                {plan.promoPrice}
                 <span>/mês</span>
               </div>
               <div className="urbann-pricing-card__divider" />
               <div className="urbann-pricing-card__features">
                 {plan.features.map((feature) => (
-                  <div key={feature} className="urbann-pricing-card__feature">
+                  <div key={feature.text} className="urbann-pricing-card__feature">
                     <Check size={14} />
-                    {feature}
+                    {feature.text}
                   </div>
                 ))}
               </div>
@@ -559,13 +535,13 @@ export default function Home() {
         <div className="urbann-cta__title">
           Comece hoje.
           <br />
-          <span>É gratuito.</span>
+          <span>Teste por 7 dias.</span>
         </div>
         <p className="urbann-cta__sub">
-          Crie sua conta em menos de 1 minuto. Sem cartão de crédito.
+          Crie sua conta em menos de 1 minuto e ative seu plano com 7 dias grátis.
         </p>
         <Link className="urbann-btn urbann-btn--solid urbann-btn--large" href="/Financeiro">
-          Criar conta grátis →
+          Começar agora →
         </Link>
       </section>
 

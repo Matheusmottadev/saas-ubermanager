@@ -3,6 +3,7 @@
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { pricingPlans } from "@/lib/pricing";
 import type { PlanData } from "@/types/onboarding";
 
 interface Props {
@@ -11,42 +12,6 @@ interface Props {
   onChange: (data: PlanData) => void;
   onNext: () => void;
 }
-
-const PLANS = [
-  {
-    badge: "Promo 2 meses",
-    description: "Controle essencial com tudo que o motorista precisa para operar no azul",
-    features: [
-      { ok: true, text: "Registro de corridas" },
-      { ok: true, text: "Controle de despesas e custos fixos" },
-      { ok: true, text: "Metas por plataforma" },
-      { ok: true, text: "1 veículo e até 3 plataformas" },
-      { ok: true, text: "Relatórios básicos" },
-      { ok: false, text: "Análise IA" },
-      { ok: false, text: "PDF/CSV e alertas avançados" },
-    ],
-    id: "basic" as const,
-    name: "Essencial",
-    period: "/mês",
-    price: "R$14,90",
-  },
-  {
-    badge: "Mais popular",
-    description: "Para quem quer ganhar mais com visão completa da operação",
-    features: [
-      { ok: true, text: "Tudo do Essencial" },
-      { ok: true, text: "3 plataformas simultâneas" },
-      { ok: true, text: "Mapa de calor" },
-      { ok: true, text: "Relatórios PDF/CSV" },
-      { ok: true, text: "Alertas e análise IA" },
-      { ok: true, text: "Histórico ilimitado" },
-    ],
-    id: "pro" as const,
-    name: "Pro",
-    period: "/mês",
-    price: "R$24,90",
-  },
-] as const;
 
 export default function StepPlan({ data, onBack, onChange, onNext }: Props) {
   const [mounted, setMounted] = useState(false);
@@ -88,7 +53,7 @@ export default function StepPlan({ data, onBack, onChange, onNext }: Props) {
       </div>
 
       <div className={`grid grid-cols-2 gap-4 mb-6 ${mounted ? "anim-fadeUp d-100" : ""}`}>
-        {PLANS.map((plan) => {
+        {pricingPlans.map((plan) => {
           const selected = data.selectedPlan === plan.id;
 
           return (
@@ -131,12 +96,12 @@ export default function StepPlan({ data, onBack, onChange, onNext }: Props) {
 
               <div className="flex items-baseline gap-1 mb-4">
                 <span style={{ fontFamily: "var(--font-title), sans-serif", fontSize: 28, fontWeight: 800, letterSpacing: -1 }}>
-                  {plan.price}
+                  {plan.promoPrice}
                 </span>
                 <span style={{ color: "var(--s5)", fontSize: 12 }}>{plan.period}</span>
               </div>
               <p style={{ color: "var(--s5)", fontSize: 10, marginTop: -10, marginBottom: 14 }}>
-                {plan.id === "pro" ? "Depois R$29,90/mês" : "Depois R$19,90/mês"}
+                {`Depois ${plan.regularPrice}/mês`}
               </p>
 
               <ul className="flex flex-col gap-2">
