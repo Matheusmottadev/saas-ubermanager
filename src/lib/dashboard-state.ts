@@ -54,6 +54,15 @@ export type ScheduledMaintenanceItem = {
   subtitle: string;
 };
 
+export type DailySummaryEntry = {
+  createdAt: string;
+  id: string;
+  onlineMinutes: number;
+  platformRevenue: Record<PlatformKey, number>;
+  totalKm: number;
+  totalRides: number;
+};
+
 export type IdleTimeEntry = {
   createdAt: string;
   id: string;
@@ -63,6 +72,7 @@ export type IdleTimeEntry = {
 export type DashboardStatePayload = {
   activePlatforms: Record<PlatformKey, boolean>;
   costs: CostItem[];
+  dailySummaries: DailySummaryEntry[];
   idleTimeEntries: IdleTimeEntry[];
   rides: Ride[];
   scheduledMaintenance: ScheduledMaintenanceItem[];
@@ -136,6 +146,7 @@ export function createInitialDashboardState(): DashboardStatePayload {
   return {
     activePlatforms: { ...defaultPlatforms },
     costs: [],
+    dailySummaries: [],
     idleTimeEntries: [],
     rides: [],
     scheduledMaintenance: [],
@@ -157,6 +168,9 @@ export function normalizeDashboardState(input: unknown): DashboardStatePayload {
       ...(candidate.activePlatforms ?? {}),
     },
     costs: Array.isArray(candidate.costs) ? candidate.costs : fallback.costs,
+    dailySummaries: Array.isArray(candidate.dailySummaries)
+      ? candidate.dailySummaries
+      : fallback.dailySummaries,
     idleTimeEntries: Array.isArray(candidate.idleTimeEntries)
       ? candidate.idleTimeEntries
       : fallback.idleTimeEntries,

@@ -63,6 +63,7 @@ import RegisterModal, { type RegisterModalPayload } from "./RegisterModal";
 import {
   createInitialDashboardState,
   createVehicleProfile,
+  type DailySummaryEntry,
   defaultPlatforms,
   defaultSettings,
   type DashboardStatePayload,
@@ -107,6 +108,7 @@ type AssistantAnalytics = {
   costs: CostItem[];
   monthGoal: number;
   rides: Ride[];
+  summaries: DailySummaryEntry[];
 };
 
 type MaintenanceDraft = {
@@ -496,6 +498,7 @@ function createEmptyPlatformMetricsMap() {
 
 function buildPlatformMetricsMap(params: {
   costs: CostItem[];
+  dailySummaries: DailySummaryEntry[];
   rides: Ride[];
   vehicle: VehicleProfile;
 }) {
@@ -507,25 +510,66 @@ function buildPlatformMetricsMap(params: {
   const previousMonthReference = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
   const metrics = createEmptyPlatformMetricsMap();
-  const monthGrossTotal = params.rides.reduce((total, ride) => {
-    const rideDate = getRideDate(ride);
-    return isSameCalendarMonth(rideDate, now) ? total + ride.earnings : total;
-  }, 0);
+  const monthGrossTotal =
+    params.rides.reduce((total, ride) => {
+      const rideDate = getRideDate(ride);
+      return isSameCalendarMonth(rideDate, now) ? total + ride.earnings : total;
+    }, 0) +
+    params.dailySummaries.reduce((total, summary) => {
+      const summaryDate = getEntryDate(summary.createdAt);
+      return isSameCalendarMonth(summaryDate, now)
+        ? total + platformOrder.reduce((sum, key) => sum + Number(summary.platformRevenue[key] ?? 0), 0)
+        : total;
+    }, 0);
   const totalCosts = sumCost(params.costs);
 
   for (const platform of platformOrder) {
     const rides = params.rides.filter((ride) => ride.platform === platform);
+    const summaries = params.dailySummaries.filter((summary) => Number(summary.platformRevenue[platform] ?? 0) > 0);
     const todayRides = rides.filter((ride) => isSameCalendarDay(getRideDate(ride), now));
     const yesterdayRides = rides.filter((ride) => isSameCalendarDay(getRideDate(ride), yesterday));
     const monthRides = rides.filter((ride) => isSameCalendarMonth(getRideDate(ride), now));
     const previousMonthRides = rides.filter((ride) => isSameCalendarMonth(getRideDate(ride), previousMonthReference));
+    const todaySummaries = summaries.filter((summary) => isSameCalendarDay(getEntryDate(summary.createdAt), now));
+    const yesterdaySummaries = summaries.filter((summary) => isSameCalendarDay(getEntryDate(summary.createdAt), yesterday));
+    const monthSummaries = summaries.filter((summary) => isSameCalendarMonth(getEntryDate(summary.createdAt), now));
+    const previousMonthSummaries = summaries.filter((summary) =>
+      isSameCalendarMonth(getEntryDate(summary.createdAt), previousMonthReference),
+    );
 
-    const dayRevenue = todayRides.reduce((total, ride) => total + ride.earnings, 0);
-    const dayKm = todayRides.reduce((total, ride) => total + ride.distanceKm, 0);
-    const monthGross = monthRides.reduce((total, ride) => total + ride.earnings, 0);
-    const monthKm = monthRides.reduce((total, ride) => total + ride.distanceKm, 0);
-    const previousMonthGross = previousMonthRides.reduce((total, ride) => total + ride.earnings, 0);
-    const onlineMinutes = todayRides.reduce((total, ride) => total + getRideDurationMinutes(ride), 0);
+    const ridesDayRevenue = todayRides.reduce((total, ride) => total + ride.earnings, 0);
+    const ridesDayKm = todayRides.reduce((total, ride) => total + ride.distanceKm, 0);
+    const ridesMonthGross = monthRides.reduce((total, ride) => total + ride.earnings, 0);
+    const ridesMonthKm = monthRides.reduce((total, ride) => total + ride.distanceKm, 0);
+    const ridesPreviousMonthGross = previousMonthRides.reduce((total, ride) => total + ride.earnings, 0);
+    const ridesOnlineMinutes = todayRides.reduce((total, ride) => total + getRideDurationMinutes(ride), 0);
+    const summariesDayRevenue = todaySummaries.reduce((total, summary) => total + Number(summary.platformRevenue[platform] ?? 0), 0);
+    const summariesDayKm = todaySummaries.reduce((total, summary) => {
+      const totalRevenue = platformOrder.reduce((sum, key) => sum + Number(summary.platformRevenue[key] ?? 0), 0);
+      const share = totalRevenue > 0 ? Number(summary.platformRevenue[platform] ?? 0) / totalRevenue : 0;
+      return total + summary.totalKm * share;
+    }, 0);
+    const summariesMonthGross = monthSummaries.reduce((total, summary) => total + Number(summary.platformRevenue[platform] ?? 0), 0);
+    const summariesMonthKm = monthSummaries.reduce((total, summary) => {
+      const totalRevenue = platformOrder.reduce((sum, key) => sum + Number(summary.platformRevenue[key] ?? 0), 0);
+      const share = totalRevenue > 0 ? Number(summary.platformRevenue[platform] ?? 0) / totalRevenue : 0;
+      return total + summary.totalKm * share;
+    }, 0);
+    const summariesPreviousMonthGross = previousMonthSummaries.reduce(
+      (total, summary) => total + Number(summary.platformRevenue[platform] ?? 0),
+      0,
+    );
+    const summariesOnlineMinutes = todaySummaries.reduce((total, summary) => {
+      const totalRevenue = platformOrder.reduce((sum, key) => sum + Number(summary.platformRevenue[key] ?? 0), 0);
+      const share = totalRevenue > 0 ? Number(summary.platformRevenue[platform] ?? 0) / totalRevenue : 0;
+      return total + summary.onlineMinutes * share;
+    }, 0);
+    const dayRevenue = ridesDayRevenue + summariesDayRevenue;
+    const dayKm = ridesDayKm + summariesDayKm;
+    const monthGross = ridesMonthGross + summariesMonthGross;
+    const monthKm = ridesMonthKm + summariesMonthKm;
+    const previousMonthGross = ridesPreviousMonthGross + summariesPreviousMonthGross;
+    const onlineMinutes = ridesOnlineMinutes + summariesOnlineMinutes;
     const allocatedMonthCost = monthGrossTotal > 0 ? totalCosts * (monthGross / monthGrossTotal) : 0;
     const fuelEstimate = dayKm > 0 && params.vehicle.efficiency > 0
       ? (dayKm / params.vehicle.efficiency) * params.vehicle.energyCost
@@ -535,8 +579,15 @@ function buildPlatformMetricsMap(params: {
 
     metrics[platform] = {
       avgDayKm:
-        monthRides.length > 0
-          ? monthKm / Math.max(new Set(monthRides.map((ride) => getRideDate(ride).toDateString())).size, 1)
+        monthRides.length > 0 || monthSummaries.length > 0
+          ? monthKm /
+            Math.max(
+              new Set([
+                ...monthRides.map((ride) => getRideDate(ride).toDateString()),
+                ...monthSummaries.map((summary) => getEntryDate(summary.createdAt).toDateString()),
+              ]).size,
+              1,
+            )
           : 0,
       currentGainPerKm,
       currentHourly,
@@ -550,15 +601,22 @@ function buildPlatformMetricsMap(params: {
       monthCost: allocatedMonthCost,
       monthGoal: 0,
       monthGross,
-      monthRides: monthRides.length,
+      monthRides: monthRides.length + monthSummaries.reduce((total, summary) => total + summary.totalRides, 0),
       onlineMinutes,
       prevWeekGainPerKm: currentGainPerKm,
-      previousAvgRide: previousMonthRides.length > 0 ? previousMonthGross / previousMonthRides.length : 0,
+      previousAvgRide:
+        previousMonthRides.length + previousMonthSummaries.reduce((total, summary) => total + summary.totalRides, 0) > 0
+          ? previousMonthGross /
+            (previousMonthRides.length + previousMonthSummaries.reduce((total, summary) => total + summary.totalRides, 0))
+          : 0,
       previousMonthGross,
-      previousMonthRides: previousMonthRides.length,
-      ridesToday: todayRides.length,
-      ridesYesterday: yesterdayRides.length,
-      yesterdayRevenue: yesterdayRides.reduce((total, ride) => total + ride.earnings, 0),
+      previousMonthRides:
+        previousMonthRides.length + previousMonthSummaries.reduce((total, summary) => total + summary.totalRides, 0),
+      ridesToday: todayRides.length + todaySummaries.reduce((total, summary) => total + summary.totalRides, 0),
+      ridesYesterday: yesterdayRides.length + yesterdaySummaries.reduce((total, summary) => total + summary.totalRides, 0),
+      yesterdayRevenue:
+        yesterdayRides.reduce((total, ride) => total + ride.earnings, 0) +
+        yesterdaySummaries.reduce((total, summary) => total + Number(summary.platformRevenue[platform] ?? 0), 0),
     };
   }
 
@@ -645,16 +703,24 @@ function buildNotificationItems(params: {
 }
 
 function buildAssistantInitialMessage(data: AssistantAnalytics) {
-  if (data.rides.length === 0 && data.costs.length === 0) {
+  if (data.rides.length === 0 && data.summaries.length === 0 && data.costs.length === 0) {
     return "Ainda não há corridas nem despesas registradas. Assim que você lançar os primeiros dados, eu consigo resumir plataforma, ganho por km, ticket médio e custos.";
   }
 
-  const totalRevenue = data.rides.reduce((sum, ride) => sum + ride.earnings, 0);
-  const totalKm = data.rides.reduce((sum, ride) => sum + ride.distanceKm, 0);
+  const totalRevenue =
+    data.rides.reduce((sum, ride) => sum + ride.earnings, 0) +
+    data.summaries.reduce(
+      (sum, summary) => sum + platformOrder.reduce((platformSum, platform) => platformSum + Number(summary.platformRevenue[platform] ?? 0), 0),
+      0,
+    );
+  const totalKm =
+    data.rides.reduce((sum, ride) => sum + ride.distanceKm, 0) +
+    data.summaries.reduce((sum, summary) => sum + summary.totalKm, 0);
+  const totalRides = data.rides.length + data.summaries.reduce((sum, summary) => sum + summary.totalRides, 0);
   const totalCosts = sumCost(data.costs);
   const gainPerKm = totalKm > 0 ? totalRevenue / totalKm : 0;
 
-  return `Já li os dados atuais do painel. Hoje você tem ${data.rides.length} ${data.rides.length === 1 ? "corrida registrada" : "corridas registradas"}, ${formatCurrency(totalRevenue)} em receita bruta e ${formatCurrency(totalCosts)} em despesas. Seu ganho médio por km está em ${formatCurrency(gainPerKm, 2)}.`;
+  return `Já li os dados atuais do painel. Hoje você tem ${totalRides} ${totalRides === 1 ? "corrida registrada" : "corridas registradas"}, ${formatCurrency(totalRevenue)} em receita bruta e ${formatCurrency(totalCosts)} em despesas. Seu ganho médio por km está em ${formatCurrency(gainPerKm, 2)}.`;
 }
 
 function generateAssistantReply(question: string, data: AssistantAnalytics) {
@@ -663,23 +729,40 @@ function generateAssistantReply(question: string, data: AssistantAnalytics) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
-  if (data.rides.length === 0 && data.costs.length === 0) {
+  if (data.rides.length === 0 && data.summaries.length === 0 && data.costs.length === 0) {
     return "Ainda não tenho base para responder isso porque o painel está sem corridas e sem despesas registradas. Comece lançando corridas ou um resumo do dia.";
   }
 
-  const totalRevenue = data.rides.reduce((sum, ride) => sum + ride.earnings, 0);
-  const totalKm = data.rides.reduce((sum, ride) => sum + ride.distanceKm, 0);
+  const totalRevenue =
+    data.rides.reduce((sum, ride) => sum + ride.earnings, 0) +
+    data.summaries.reduce(
+      (sum, summary) => sum + platformOrder.reduce((platformSum, platform) => platformSum + Number(summary.platformRevenue[platform] ?? 0), 0),
+      0,
+    );
+  const totalKm =
+    data.rides.reduce((sum, ride) => sum + ride.distanceKm, 0) +
+    data.summaries.reduce((sum, summary) => sum + summary.totalKm, 0);
+  const totalRides = data.rides.length + data.summaries.reduce((sum, summary) => sum + summary.totalRides, 0);
   const totalCosts = sumCost(data.costs);
   const net = totalRevenue - totalCosts;
-  const avgRideValue = data.rides.length ? totalRevenue / data.rides.length : 0;
+  const avgRideValue = totalRides ? totalRevenue / totalRides : 0;
   const gainPerKm = totalKm > 0 ? totalRevenue / totalKm : 0;
   const monthPct = data.monthGoal > 0 ? (net / data.monthGoal) * 100 : 0;
 
   const platformSummaries = platformOrder.map((platform) => {
     const rides = data.rides.filter((ride) => ride.platform === platform);
-    const revenue = rides.reduce((sum, ride) => sum + ride.earnings, 0);
-    const km = rides.reduce((sum, ride) => sum + ride.distanceKm, 0);
-    const ridesCount = rides.length;
+    const summaries = data.summaries.filter((summary) => Number(summary.platformRevenue[platform] ?? 0) > 0);
+    const revenue =
+      rides.reduce((sum, ride) => sum + ride.earnings, 0) +
+      summaries.reduce((sum, summary) => sum + Number(summary.platformRevenue[platform] ?? 0), 0);
+    const km =
+      rides.reduce((sum, ride) => sum + ride.distanceKm, 0) +
+      summaries.reduce((sum, summary) => {
+        const totalSummaryRevenue = platformOrder.reduce((platformSum, key) => platformSum + Number(summary.platformRevenue[key] ?? 0), 0);
+        const share = totalSummaryRevenue > 0 ? Number(summary.platformRevenue[platform] ?? 0) / totalSummaryRevenue : 0;
+        return sum + summary.totalKm * share;
+      }, 0);
+    const ridesCount = rides.length + summaries.reduce((sum, summary) => sum + summary.totalRides, 0);
     const avgPerKm = km > 0 ? revenue / km : 0;
 
     return {
@@ -721,11 +804,11 @@ function generateAssistantReply(question: string, data: AssistantAnalytics) {
   }
 
   if (normalized.includes("ticket") || normalized.includes("media") || normalized.includes("corrida")) {
-    if (data.rides.length === 0) {
+    if (totalRides === 0) {
       return "Ainda não há corridas suficientes para calcular ticket médio.";
     }
 
-    return `Seu ticket médio atual está em ${formatCurrency(avgRideValue, 2)} por corrida, considerando ${data.rides.length} ${data.rides.length === 1 ? "corrida registrada" : "corridas registradas"}.`;
+    return `Seu ticket médio atual está em ${formatCurrency(avgRideValue, 2)} por corrida, considerando ${totalRides} ${totalRides === 1 ? "corrida registrada" : "corridas registradas"}.`;
   }
 
   if (normalized.includes("despesa") || normalized.includes("custo")) {
@@ -752,7 +835,7 @@ function generateAssistantReply(question: string, data: AssistantAnalytics) {
     return `Melhor corrida atual: ${bestRide.route} com ${formatCurrency(bestRide.earnings / Math.max(bestRide.distanceKm, 0.1), 2)}/km. Pior corrida atual: ${worstRide.route} com ${formatCurrency(worstRide.earnings / Math.max(worstRide.distanceKm, 0.1), 2)}/km.`;
   }
 
-  return `Resumo rápido: ${data.rides.length} corridas, ${formatCurrency(totalRevenue)} de receita bruta, ${formatCurrency(totalCosts)} de despesas e ${formatCurrency(net)} líquidos até agora. Se quiser, me pergunte sobre plataforma, custos, ganho por km, ticket médio ou meta mensal.`;
+  return `Resumo rápido: ${totalRides} corridas, ${formatCurrency(totalRevenue)} de receita bruta, ${formatCurrency(totalCosts)} de despesas e ${formatCurrency(net)} líquidos até agora. Se quiser, me pergunte sobre plataforma, custos, ganho por km, ticket médio ou meta mensal.`;
 }
 
 function formatDateLabel() {
@@ -941,6 +1024,7 @@ function FinanceiroDashboardClient() {
   const [savedSettings, setSavedSettings] = useState<SettingsState>(initialDashboardState.settings);
   const [editableRides, setEditableRides] = useState<Ride[]>(initialDashboardState.rides);
   const [editableCosts, setEditableCosts] = useState<CostItem[]>(initialDashboardState.costs);
+  const [dailySummaries, setDailySummaries] = useState<DailySummaryEntry[]>(initialDashboardState.dailySummaries);
   const [idleTimeEntries, setIdleTimeEntries] = useState<IdleTimeEntry[]>(initialDashboardState.idleTimeEntries);
   const [scheduledMaintenance, setScheduledMaintenance] = useState<ScheduledMaintenanceItem[]>(
     initialDashboardState.scheduledMaintenance,
@@ -1009,6 +1093,7 @@ function FinanceiroDashboardClient() {
           applyRideQualityThresholds(Array.isArray(data.rides) ? data.rides : [], loadedSettings.rideQualityThresholds),
         );
         setEditableCosts(Array.isArray(data.costs) ? data.costs : []);
+        setDailySummaries(Array.isArray(data.dailySummaries) ? data.dailySummaries : []);
         setIdleTimeEntries(Array.isArray(data.idleTimeEntries) ? data.idleTimeEntries : []);
         setScheduledMaintenance(Array.isArray(data.scheduledMaintenance) ? data.scheduledMaintenance : []);
       } catch (error) {
@@ -1067,6 +1152,7 @@ function FinanceiroDashboardClient() {
   const persistedStateSnapshot = JSON.stringify({
     activePlatforms,
     costs: editableCosts,
+    dailySummaries,
     idleTimeEntries,
     rides: editableRides,
     scheduledMaintenance,
@@ -1127,6 +1213,7 @@ function FinanceiroDashboardClient() {
   );
   const platformMetrics = buildPlatformMetricsMap({
     costs: allCosts,
+    dailySummaries,
     rides: editableRides,
     vehicle: settings.vehicle,
   });
@@ -1450,6 +1537,21 @@ function FinanceiroDashboardClient() {
       return;
     }
 
+    const summaryDate = new Date().toISOString();
+    const summaryEntry: DailySummaryEntry = {
+      createdAt: summaryDate,
+      id: `summary-${Date.now()}`,
+      onlineMinutes: Math.max((Number(payload.summary.onlineHours) || 0) * 60, 0),
+      platformRevenue: {
+        "99": Number(payload.summary.ninetyNineRevenue) || 0,
+        indrive: Number(payload.summary.indriveRevenue) || 0,
+        uber: Number(payload.summary.uberRevenue) || 0,
+      },
+      totalKm: Number(payload.summary.totalKm) || 0,
+      totalRides: Number(payload.summary.totalRides) || 0,
+    };
+
+    setDailySummaries((current) => [summaryEntry, ...current]);
     setToastMessage("Resumo do dia salvo");
     setRegisterModalOpen(false);
   };
@@ -1785,6 +1887,7 @@ function FinanceiroDashboardClient() {
                   costs: allCosts,
                   monthGoal,
                   rides: editableRides,
+                  summaries: dailySummaries,
                 }}
               />
             )}
