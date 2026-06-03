@@ -1851,14 +1851,10 @@ function FinanceiroDashboardClient() {
 
             {currentPage === "corridas" && (
               <CorridasPage
-                avgRideValue={avgRideValue}
                 corridasFilter={corridasFilter}
-                monthRides={monthRides}
                 onEditRide={openRideEditor}
                 onFilterChange={setCorridasFilter}
                 onSaveQualityThresholds={handleSaveRideQualityThresholds}
-                previousAvgRide={previousAvgRide}
-                previousMonthRides={previousMonthRides}
                 qualityThresholds={settings.rideQualityThresholds}
                 rides={corridasRides}
                 visiblePlatforms={activePlatformKeys}
@@ -2597,11 +2593,35 @@ function DashboardPage(props: {
 
   return (
     <div className="space-y-5">
-      <PlatformTabs
-        current={props.dashboardFilter}
-        onChange={props.onFilterChange}
-        visiblePlatforms={props.visiblePlatforms}
-      />
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <PlatformTabs
+          current={props.dashboardFilter}
+          onChange={props.onFilterChange}
+          visiblePlatforms={props.visiblePlatforms}
+        />
+        <div className="inline-flex self-start rounded-xl border border-white/8 bg-[#1b1b1b] p-1 text-[11px] xl:self-auto">
+          <button
+            className={cn(
+              "rounded-lg px-3 py-2 font-medium transition",
+              historyPeriod === "daily" ? "bg-[#f5f4f0] text-black" : "text-neutral-500 hover:text-white",
+            )}
+            onClick={() => setHistoryPeriod("daily")}
+            type="button"
+          >
+            Diário
+          </button>
+          <button
+            className={cn(
+              "rounded-lg px-3 py-2 font-medium transition",
+              historyPeriod === "monthly" ? "bg-[#f5f4f0] text-black" : "text-neutral-500 hover:text-white",
+            )}
+            onClick={() => setHistoryPeriod("monthly")}
+            type="button"
+          >
+            Mensal
+          </button>
+        </div>
+      </div>
 
       <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
         <MetricCard
@@ -2758,37 +2778,13 @@ function DashboardPage(props: {
               </div>
               <div className="text-[11px] text-neutral-500">Por plataforma</div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-xl border border-white/8 bg-[#1b1b1b] p-1 text-[11px]">
-                <button
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 font-medium transition",
-                    historyPeriod === "daily" ? "bg-[#f5f4f0] text-black" : "text-neutral-500 hover:text-white",
-                  )}
-                  onClick={() => setHistoryPeriod("daily")}
-                  type="button"
-                >
-                  Diário
-                </button>
-                <button
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 font-medium transition",
-                    historyPeriod === "monthly" ? "bg-[#f5f4f0] text-black" : "text-neutral-500 hover:text-white",
-                  )}
-                  onClick={() => setHistoryPeriod("monthly")}
-                  type="button"
-                >
-                  Mensal
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 text-[10px] text-neutral-500">
-                {selectedPlatforms.map((platform) => (
-                  <div key={platform} className="flex items-center gap-1">
-                    <span className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: platformMeta[platform].color }} />
-                    {platformMeta[platform].shortLabel}
-                  </div>
-                ))}
-              </div>
+            <div className="flex flex-wrap items-center gap-2 text-[10px] text-neutral-500">
+              {selectedPlatforms.map((platform) => (
+                <div key={platform} className="flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: platformMeta[platform].color }} />
+                  {platformMeta[platform].shortLabel}
+                </div>
+              ))}
             </div>
           </div>
           <div className="rounded-[1.15rem] bg-[#181818] px-5 pb-5 pt-5">
@@ -2943,14 +2939,10 @@ function DashboardPage(props: {
 }
 
 function CorridasPage(props: {
-  avgRideValue: number;
   corridasFilter: "all" | PlatformKey;
-  monthRides: number;
   onEditRide: (ride: Ride) => void;
   onFilterChange: (value: "all" | PlatformKey) => void;
   onSaveQualityThresholds: (target: "all" | PlatformKey, threshold: RideQualityThreshold) => void;
-  previousAvgRide: number;
-  previousMonthRides: number;
   qualityThresholds: RideQualityThresholds;
   rides: Ride[];
   visiblePlatforms: PlatformKey[];
@@ -2968,6 +2960,16 @@ function CorridasPage(props: {
   }, [selectedThreshold.badBelow, selectedThreshold.goodAbove, props.corridasFilter]);
 
   const filterLabel = props.corridasFilter === "all" ? "todas as plataformas" : platformMeta[props.corridasFilter].label;
+  const now = new Date();
+  const previousMonthReference = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const currentMonthRides = props.rides.filter((ride) => isSameCalendarMonth(getRideDate(ride), now));
+  const previousMonthRides = props.rides.filter((ride) =>
+    isSameCalendarMonth(getRideDate(ride), previousMonthReference),
+  );
+  const currentMonthGross = currentMonthRides.reduce((total, ride) => total + ride.earnings, 0);
+  const previousMonthGross = previousMonthRides.reduce((total, ride) => total + ride.earnings, 0);
+  const avgRideValue = currentMonthRides.length ? currentMonthGross / currentMonthRides.length : 0;
+  const previousAvgRide = previousMonthRides.length ? previousMonthGross / previousMonthRides.length : 0;
 
   return (
     <div className="space-y-5">
@@ -3023,16 +3025,16 @@ function CorridasPage(props: {
           label="Total do mês"
           subtitle="vs mês anterior"
           tone="up"
-          value={`${props.monthRides} corridas`}
-          valueMeta={`${props.monthRides - props.previousMonthRides >= 0 ? "+" : ""}${props.monthRides - props.previousMonthRides}`}
+          value={`${currentMonthRides.length} corridas`}
+          valueMeta={`${currentMonthRides.length - previousMonthRides.length >= 0 ? "+" : ""}${currentMonthRides.length - previousMonthRides.length}`}
         />
         <MetricCard
           icon={<TrendingUp className="h-3.5 w-3.5" />}
           label="Média por corrida"
           subtitle="vs mês anterior"
           tone="up"
-          value={formatCurrency(props.avgRideValue, 2)}
-          valueMeta={formatSignedCurrency(props.avgRideValue - props.previousAvgRide, 2)}
+          value={formatCurrency(avgRideValue, 2)}
+          valueMeta={formatSignedCurrency(avgRideValue - previousAvgRide, 2)}
         />
       </div>
       <SurfaceCard>
