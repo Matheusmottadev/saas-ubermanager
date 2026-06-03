@@ -1818,6 +1818,7 @@ function FinanceiroDashboardClient() {
             {currentPage === "dashboard" && (
               <DashboardPage
                 dashboardFilter={dashboardFilter}
+                dailySummaries={dailySummaries}
                 dayKm={dayKm}
                 dayNet={dayNet}
                 dayRevenue={dayRevenue}
@@ -2297,6 +2298,7 @@ function FinanceiroDashboardClient() {
 
 function DashboardPage(props: {
   dashboardFilter: "all" | PlatformKey;
+  dailySummaries: DailySummaryEntry[];
   dayKm: number;
   dayNet: number;
   dayRevenue: number;
@@ -2325,6 +2327,7 @@ function DashboardPage(props: {
   visiblePlatforms: PlatformKey[];
   yesterdayRevenue: number;
 }) {
+  const [historyPeriod, setHistoryPeriod] = useState<"daily" | "monthly">("daily");
   const selectedPlatforms =
     props.dashboardFilter === "all"
       ? props.visiblePlatforms
@@ -2397,133 +2400,127 @@ function DashboardPage(props: {
   const metaProjection = metaNet * PROJECTION_MULTIPLIER;
 
   const selectedPlatformSet = new Set(selectedPlatforms);
-  const historyDays = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date();
-    date.setHours(0, 0, 0, 0);
-    date.setDate(date.getDate() - (6 - index));
-    return date;
-  });
-
-  const weeklyRevenueSeries = historyDays.map((date) => {
-    const rides = props.rides.filter(
-      (ride) => selectedPlatformSet.has(ride.platform) && isSameCalendarDay(getRideDate(ride), date),
-    );
-    const uber = rides
-      .filter((ride) => ride.platform === "uber")
-      .reduce((total, ride) => total + ride.earnings, 0);
-    const n99 = rides
-      .filter((ride) => ride.platform === "99")
-      .reduce((total, ride) => total + ride.earnings, 0);
-    const indrive = rides
-      .filter((ride) => ride.platform === "indrive")
-      .reduce((total, ride) => total + ride.earnings, 0);
-
-    return {
-      day: isSameCalendarDay(date, new Date()) ? "Hoje" : formatShortWeekday(date),
-      indrive,
-      n99,
-      total: uber + n99 + indrive,
-      uber,
-    };
-  });
-
-  const weeklyMaxTotal = Math.max(...weeklyRevenueSeries.map((bar) => bar.total), 1);
-  const weeklyScaleMarks = [1, 0.66, 0.33, 0].map((ratio) => Math.round(weeklyMaxTotal * ratio));
-  const weeklyAverageRevenue =
-    weeklyRevenueSeries.reduce((total, item) => total + item.total, 0) / Math.max(weeklyRevenueSeries.length, 1);
   const selectedMarginRatio = selectedDayRevenue ? selectedDayNet / selectedDayRevenue : 0;
   const selectedFuelPerKm = selectedDayKm ? selectedFuelEstimate / selectedDayKm : 0;
-  const selectedAvgRideValue = selectedRidesToday ? selectedDayRevenue / selectedRidesToday : 0;
 
-  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+  const pointDates =
+    historyPeriod === "daily"
+      ? Array.from({ length: 7 }, (_, index) => {
+          const date = new Date();
+          date.setHours(0, 0, 0, 0);
+          date.setDate(date.getDate() - (6 - index));
+          return date;
+        })
+      : Array.from({ length: 6 }, (_, index) => new Date(new Date().getFullYear(), new Date().getMonth() - (5 - index), 1));
 
-  const rideHistorySnapshots = historyDays.map((date) => {
+  const matchesPoint = (value: Date, point: Date) =>
+    historyPeriod === "daily" ? isSameCalendarDay(value, point) : isSameCalendarMonth(value, point);
+
+  const formatPointLabel = (point: Date) =>
+    historyPeriod === "daily"
+      ? isSameCalendarDay(point, new Date())
+        ? "Hoje"
+        : formatShortWeekday(point)
+      : point.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+
+  const periodSnapshots = pointDates.map((point) => {
     const rides = props.rides.filter(
-      (ride) => selectedPlatformSet.has(ride.platform) && isSameCalendarDay(getRideDate(ride), date),
+      (ride) => selectedPlatformSet.has(ride.platform) && matchesPoint(getRideDate(ride), point),
     );
+    const summaries = props.dailySummaries.filter((summary) => {
+      if (!matchesPoint(getEntryDate(summary.createdAt), point)) {
+        return false;
+      }
+      const totalRevenue = selectedPlatforms.reduce((sum, platform) => sum + Number(summary.platformRevenue[platform] ?? 0), 0);
+      return totalRevenue > 0;
+    });
     const idleMinutes = props.idleTimeEntries
-      .filter((entry) => isSameCalendarDay(getEntryDate(entry.createdAt), date))
+      .filter((entry) => matchesPoint(getEntryDate(entry.createdAt), point))
       .reduce((total, entry) => total + entry.minutes, 0);
-    const revenueWithRealTime = rides.reduce((total, ride) => {
-      const breakdown = getRideDurationBreakdown(ride);
-      return breakdown.realMinutes > 0 ? total + ride.earnings : total;
+    const summaryRevenue = summaries.reduce(
+      (total, summary) => total + selectedPlatforms.reduce((sum, platform) => sum + Number(summary.platformRevenue[platform] ?? 0), 0),
+      0,
+    );
+    const summaryKm = summaries.reduce((total, summary) => {
+      const totalRevenue = platformOrder.reduce((sum, platform) => sum + Number(summary.platformRevenue[platform] ?? 0), 0);
+      const selectedRevenue = selectedPlatforms.reduce((sum, platform) => sum + Number(summary.platformRevenue[platform] ?? 0), 0);
+      const share = totalRevenue > 0 ? selectedRevenue / totalRevenue : 0;
+      return total + summary.totalKm * share;
     }, 0);
+    const summaryOnlineMinutes = summaries.reduce((total, summary) => {
+      const totalRevenue = platformOrder.reduce((sum, platform) => sum + Number(summary.platformRevenue[platform] ?? 0), 0);
+      const selectedRevenue = selectedPlatforms.reduce((sum, platform) => sum + Number(summary.platformRevenue[platform] ?? 0), 0);
+      const share = totalRevenue > 0 ? selectedRevenue / totalRevenue : 0;
+      return total + summary.onlineMinutes * share;
+    }, 0);
+    const summaryRides = summaries.reduce((total, summary) => {
+      const totalRevenue = platformOrder.reduce((sum, platform) => sum + Number(summary.platformRevenue[platform] ?? 0), 0);
+      const selectedRevenue = selectedPlatforms.reduce((sum, platform) => sum + Number(summary.platformRevenue[platform] ?? 0), 0);
+      const share = totalRevenue > 0 ? selectedRevenue / totalRevenue : 0;
+      return total + summary.totalRides * share;
+    }, 0);
+    const revenueWithRealTime =
+      rides.reduce((total, ride) => {
+        const breakdown = getRideDurationBreakdown(ride);
+        return breakdown.realMinutes > 0 ? total + ride.earnings : total;
+      }, 0) + summaryRevenue;
     const revenueEstimatedTime = rides.reduce((total, ride) => {
       const breakdown = getRideDurationBreakdown(ride);
       return breakdown.realMinutes === 0 ? total + ride.earnings : total;
     }, 0);
-    const onlineRealMinutes = rides.reduce((total, ride) => total + getRideDurationBreakdown(ride).realMinutes, 0);
+    const onlineRealMinutes =
+      rides.reduce((total, ride) => total + getRideDurationBreakdown(ride).realMinutes, 0) + idleMinutes + summaryOnlineMinutes;
     const onlineEstimatedMinutes = rides.reduce(
       (total, ride) => total + getRideDurationBreakdown(ride).estimatedMinutes,
       0,
     );
-
-    return {
-      day: isSameCalendarDay(date, new Date()) ? "Hoje" : formatShortWeekday(date),
-      onlineEstimatedMinutes,
-      onlineMinutes: onlineRealMinutes + onlineEstimatedMinutes + idleMinutes,
-      onlineRealMinutes: onlineRealMinutes + idleMinutes,
-      revenue: revenueWithRealTime + revenueEstimatedTime,
-      revenueEstimatedTime,
-      revenueWithRealTime,
-    };
-  });
-
-  const dailySnapshots = weeklyRevenueSeries.map((item) => {
-    if (item.day === "Hoje") {
-      return {
-        day: item.day,
-        fuel: selectedFuelEstimate,
-        gainPerKm: selectedGainPerKm,
-        hourly: selectedHourlyValue,
-        km: selectedDayKm,
-        net: selectedDayNet,
-        onlineMinutes: selectedOnlineMinutes,
-        revenue: selectedDayRevenue,
-        rides: selectedRidesToday,
-      };
-    }
-
-    if (item.total <= 0) {
-      return {
-        day: item.day,
-        fuel: 0,
-        gainPerKm: 0,
-        hourly: 0,
-        km: 0,
-        net: 0,
-        onlineMinutes: 0,
-        revenue: 0,
-        rides: 0,
-      };
-    }
-
-    const trend = weeklyAverageRevenue ? item.total / weeklyAverageRevenue : 1;
-    const gainPerKm = clamp(selectedGainPerKm * (0.94 + (trend - 1) * 0.22), 1.4, 3.6);
-    const hourly = clamp(selectedHourlyValue * (0.9 + (trend - 1) * 0.28), 18, 80);
-    const revenue = item.total;
-    const net = revenue * selectedMarginRatio;
-    const km = gainPerKm ? revenue / gainPerKm : 0;
-    const rides = selectedAvgRideValue ? Math.max(1, Math.round(revenue / selectedAvgRideValue)) : 0;
+    const revenue = revenueWithRealTime + revenueEstimatedTime;
+    const km = rides.reduce((total, ride) => total + ride.distanceKm, 0) + summaryKm;
+    const ridesCount = rides.length + summaryRides;
+    const onlineMinutes = onlineRealMinutes + onlineEstimatedMinutes;
+    const gainPerKm = km > 0 ? revenue / km : 0;
+    const hourly = onlineMinutes > 0 ? revenue / (onlineMinutes / 60) : 0;
     const fuel = km * selectedFuelPerKm;
-    const onlineMinutes = hourly ? (revenue / hourly) * 60 : 0;
+    const net = revenue * selectedMarginRatio;
+
+    const uber =
+      rides.filter((ride) => ride.platform === "uber").reduce((total, ride) => total + ride.earnings, 0) +
+      summaries.reduce((total, summary) => total + Number(summary.platformRevenue.uber ?? 0), 0);
+    const n99 =
+      rides.filter((ride) => ride.platform === "99").reduce((total, ride) => total + ride.earnings, 0) +
+      summaries.reduce((total, summary) => total + Number(summary.platformRevenue["99"] ?? 0), 0);
+    const indrive =
+      rides.filter((ride) => ride.platform === "indrive").reduce((total, ride) => total + ride.earnings, 0) +
+      summaries.reduce((total, summary) => total + Number(summary.platformRevenue.indrive ?? 0), 0);
 
     return {
-      day: item.day,
+      day: formatPointLabel(point),
       fuel,
       gainPerKm,
       hourly,
+      indrive,
       km,
+      n99,
       net,
+      onlineEstimatedMinutes,
       onlineMinutes,
+      onlineRealMinutes,
+      point,
       revenue,
-      rides,
+      revenueEstimatedTime,
+      revenueWithRealTime,
+      rides: ridesCount,
+      total: revenue,
+      uber,
     };
   });
 
-  const buildHistoryBars = (formatter: (snapshot: (typeof dailySnapshots)[number]) => string, valueKey: keyof (typeof dailySnapshots)[number]) =>
+  const periodMaxTotal = Math.max(...periodSnapshots.map((bar) => bar.total), 1);
+  const periodScaleMarks = [1, 0.66, 0.33, 0].map((ratio) => Math.round(periodMaxTotal * ratio));
+
+  const buildHistoryBars = (formatter: (snapshot: (typeof periodSnapshots)[number]) => string, valueKey: keyof (typeof periodSnapshots)[number]) =>
     {
-      const filteredSnapshots = dailySnapshots.filter((snapshot) => snapshot.day !== "Seg");
+      const filteredSnapshots = periodSnapshots;
       const bestValue = Math.max(...filteredSnapshots.map((snapshot) => Number(snapshot[valueKey] ?? 0)), 0);
 
       return filteredSnapshots.map((snapshot) => ({
@@ -2558,7 +2555,7 @@ function DashboardPage(props: {
     }));
 
   const revenueHistoryBars = buildSplitHistoryBars(
-    rideHistorySnapshots.map((snapshot) => ({
+    periodSnapshots.map((snapshot) => ({
       day: snapshot.day,
       estimated: snapshot.revenueEstimatedTime,
       real: snapshot.revenueWithRealTime,
@@ -2569,7 +2566,7 @@ function DashboardPage(props: {
   );
 
   const onlineHistoryBars = buildSplitHistoryBars(
-    rideHistorySnapshots.map((snapshot) => ({
+    periodSnapshots.map((snapshot) => ({
       day: snapshot.day,
       estimated: snapshot.onlineEstimatedMinutes,
       real: snapshot.onlineRealMinutes,
@@ -2757,40 +2754,70 @@ function DashboardPage(props: {
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <div className="text-[1.7rem] font-bold tracking-[-0.05em]" style={{ fontFamily: "var(--panel-font-display)" }}>
-                Faturamento — 7 dias
+                {historyPeriod === "daily" ? "Faturamento — diário" : "Faturamento — mensal"}
               </div>
               <div className="text-[11px] text-neutral-500">Por plataforma</div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-[10px] text-neutral-500">
-              {selectedPlatforms.map((platform) => (
-                <div key={platform} className="flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: platformMeta[platform].color }} />
-                  {platformMeta[platform].shortLabel}
-                </div>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-xl border border-white/8 bg-[#1b1b1b] p-1 text-[11px]">
+                <button
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 font-medium transition",
+                    historyPeriod === "daily" ? "bg-[#f5f4f0] text-black" : "text-neutral-500 hover:text-white",
+                  )}
+                  onClick={() => setHistoryPeriod("daily")}
+                  type="button"
+                >
+                  Diário
+                </button>
+                <button
+                  className={cn(
+                    "rounded-lg px-3 py-1.5 font-medium transition",
+                    historyPeriod === "monthly" ? "bg-[#f5f4f0] text-black" : "text-neutral-500 hover:text-white",
+                  )}
+                  onClick={() => setHistoryPeriod("monthly")}
+                  type="button"
+                >
+                  Mensal
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[10px] text-neutral-500">
+                {selectedPlatforms.map((platform) => (
+                  <div key={platform} className="flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: platformMeta[platform].color }} />
+                    {platformMeta[platform].shortLabel}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <div className="rounded-[1.15rem] bg-[#181818] px-5 pb-5 pt-5">
             <div className="flex gap-4">
               <div className="flex w-12 shrink-0 flex-col justify-between pb-7 pt-8 text-right text-[9px] font-medium text-neutral-600">
-                {weeklyScaleMarks.map((value, index) => (
+                {periodScaleMarks.map((value, index) => (
                   <div key={`${value}-${index}`}>{formatCurrency(value)}</div>
                 ))}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="grid grid-cols-7 gap-3 px-1 pb-4 text-center text-[9px] font-medium text-neutral-500">
-                  {weeklyRevenueSeries.map((bar) => (
+                <div
+                  className="grid gap-3 px-1 pb-4 text-center text-[9px] font-medium text-neutral-500"
+                  style={{ gridTemplateColumns: `repeat(${periodSnapshots.length}, minmax(0, 1fr))` }}
+                >
+                  {periodSnapshots.map((bar) => (
                     <div key={`${bar.day}-value`}>{formatCurrency(bar.total)}</div>
                   ))}
                 </div>
-                <div className="relative grid h-[180px] grid-cols-7 items-end gap-3 pb-7">
+                <div
+                  className="relative grid h-[180px] items-end gap-3 pb-7"
+                  style={{ gridTemplateColumns: `repeat(${periodSnapshots.length}, minmax(0, 1fr))` }}
+                >
                   <div className="absolute bottom-7 left-0 right-0 h-px bg-white/6" />
-                  {weeklyRevenueSeries.map((bar) => {
+                  {periodSnapshots.map((bar) => {
                     const uberHeight = bar.total ? (bar.uber / bar.total) * 100 : 0;
                     const ninetyNineHeight = bar.total ? (bar.n99 / bar.total) * 100 : 0;
                     const indriveHeight = bar.total ? (bar.indrive / bar.total) * 100 : 0;
-                    const totalHeight = Math.max((bar.total / weeklyMaxTotal) * 100, 18);
-                    const isPeakDay = bar.total === weeklyMaxTotal && bar.total > 0;
+                    const totalHeight = Math.max((bar.total / periodMaxTotal) * 100, 18);
+                    const isPeakDay = bar.total === periodMaxTotal && bar.total > 0;
 
                     return (
                       <div key={bar.day} className="relative flex h-full min-w-0 items-end justify-center">
@@ -2839,7 +2866,7 @@ function DashboardPage(props: {
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between text-[10px] text-neutral-600">
-              <span>Escala de faturamento diário</span>
+              <span>{historyPeriod === "daily" ? "Escala de faturamento diário" : "Escala de faturamento mensal"}</span>
               <span>Barras empilhadas por plataforma</span>
             </div>
           </div>
