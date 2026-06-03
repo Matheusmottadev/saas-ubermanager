@@ -2407,17 +2407,21 @@ function DashboardPage(props: {
           date.setDate(date.getDate() - (6 - index));
           return date;
         })
-      : Array.from({ length: 6 }, (_, index) => new Date(new Date().getFullYear(), new Date().getMonth() - (5 - index), 1));
+      : Array.from({ length: new Date().getDate() }, (_, index) => {
+          const date = new Date();
+          date.setHours(0, 0, 0, 0);
+          date.setDate(index + 1);
+          return date;
+        });
 
-  const matchesPoint = (value: Date, point: Date) =>
-    historyPeriod === "daily" ? isSameCalendarDay(value, point) : isSameCalendarMonth(value, point);
+  const matchesPoint = (value: Date, point: Date) => isSameCalendarDay(value, point);
 
   const formatPointLabel = (point: Date) =>
     historyPeriod === "daily"
       ? isSameCalendarDay(point, new Date())
         ? "Hoje"
         : formatShortWeekday(point)
-      : point.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+      : String(point.getDate());
 
   const periodSnapshots = pointDates.map((point) => {
     const rides = props.rides.filter(
@@ -2501,6 +2505,7 @@ function DashboardPage(props: {
       onlineEstimatedMinutes,
       onlineMinutes,
       onlineRealMinutes,
+      isCurrentPoint: isSameCalendarDay(point, new Date()),
       point,
       revenue,
       revenueEstimatedTime,
@@ -2522,7 +2527,7 @@ function DashboardPage(props: {
       return filteredSnapshots.map((snapshot) => ({
         highlight: Number(snapshot[valueKey] ?? 0) === bestValue && bestValue > 0,
         id: `${String(valueKey)}-${snapshot.day}`,
-        label: snapshot.day === "Hoje" ? "Hoje" : snapshot.day,
+        label: snapshot.isCurrentPoint ? "Hoje" : snapshot.day,
         text: formatter(snapshot),
         value: Number(snapshot[valueKey] ?? 0),
       }));
@@ -2532,6 +2537,7 @@ function DashboardPage(props: {
     snapshots: Array<{
       day: string;
       estimated: number;
+      isCurrentPoint: boolean;
       real: number;
       total: number;
     }>,
@@ -2539,9 +2545,9 @@ function DashboardPage(props: {
     prefix: string,
   ) =>
     snapshots.map((snapshot) => ({
-      highlight: snapshot.day === "Hoje" && snapshot.total > 0,
+      highlight: snapshot.isCurrentPoint && snapshot.total > 0,
       id: `${prefix}-${snapshot.day}`,
-      label: snapshot.day,
+      label: snapshot.isCurrentPoint ? "Hoje" : snapshot.day,
       segments: [
         { colorClassName: "bg-neutral-500/80", value: snapshot.estimated },
         { colorClassName: "bg-lime-400", value: snapshot.real },
@@ -2554,6 +2560,7 @@ function DashboardPage(props: {
     periodSnapshots.map((snapshot) => ({
       day: snapshot.day,
       estimated: snapshot.revenueEstimatedTime,
+      isCurrentPoint: snapshot.isCurrentPoint,
       real: snapshot.revenueWithRealTime,
       total: snapshot.revenue,
     })),
@@ -2565,6 +2572,7 @@ function DashboardPage(props: {
     periodSnapshots.map((snapshot) => ({
       day: snapshot.day,
       estimated: snapshot.onlineEstimatedMinutes,
+      isCurrentPoint: snapshot.isCurrentPoint,
       real: snapshot.onlineRealMinutes,
       total: snapshot.onlineMinutes,
     })),
@@ -2774,7 +2782,7 @@ function DashboardPage(props: {
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <div className="text-[1.7rem] font-bold tracking-[-0.05em]" style={{ fontFamily: "var(--panel-font-display)" }}>
-                {historyPeriod === "daily" ? "Faturamento — diário" : "Faturamento — mensal"}
+                {historyPeriod === "daily" ? "Faturamento — diário" : "Faturamento — mês atual"}
               </div>
               <div className="text-[11px] text-neutral-500">Por plataforma</div>
             </div>
@@ -2862,7 +2870,7 @@ function DashboardPage(props: {
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between text-[10px] text-neutral-600">
-              <span>{historyPeriod === "daily" ? "Escala de faturamento diário" : "Escala de faturamento mensal"}</span>
+              <span>{historyPeriod === "daily" ? "Escala de faturamento diário" : "Escala de faturamento do mês atual"}</span>
               <span>Barras empilhadas por plataforma</span>
             </div>
           </div>
