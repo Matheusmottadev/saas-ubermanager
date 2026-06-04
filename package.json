@@ -19,7 +19,7 @@
     "@swc/helpers": "^0.5.15",
     "argon2": "^0.41.1",
     "lucide-react": "^1.16.0",
-    "mercadopago": "^2.12.1",
+    "mercadopago": "^3.1.0",
     "next": "15.5.18",
     "prisma": "^6.11.1",
     "react": "^19.1.0",
