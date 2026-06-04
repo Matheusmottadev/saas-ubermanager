@@ -47,6 +47,14 @@ function validatePayload(data: OnboardingData) {
   return fullNameOk && emailOk && phoneOk && passwordOk && confirmOk;
 }
 
+function toErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as OnboardingData & {
@@ -225,28 +233,37 @@ export async function POST(request: Request) {
         },
       });
     } catch (error) {
-      if (referrer) {
-        await prisma.user.update({
-          where: {
-            id: referrer.id,
-          },
-          data: {
-            bonusFreeMonths: {
-              decrement: 1,
+      console.error("auth register subscription failed", error);
+      const message = toErrorMessage(
+        error,
+        "Não foi possível validar o cartão e criar a assinatura agora.",
+      );
+
+      try {
+        if (referrer) {
+          await prisma.user.update({
+            where: {
+              id: referrer.id,
             },
+            data: {
+              bonusFreeMonths: {
+                decrement: 1,
+              },
+            },
+          });
+        }
+
+        await prisma.user.delete({
+          where: {
+            id: user.id,
           },
         });
+      } catch (cleanupError) {
+        console.error("auth register cleanup failed", cleanupError);
       }
 
-      await prisma.user.delete({
-        where: {
-          id: user.id,
-        },
-      });
-
-      console.error("auth register subscription failed", error);
       return NextResponse.json(
-        { error: "Não foi possível validar o cartão e criar a assinatura agora." },
+        { error: message },
         { status: 500 },
       );
     }
@@ -268,8 +285,12 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     console.error("auth register failed", error);
+    const message = toErrorMessage(
+      error,
+      "Não foi possível criar sua conta agora.",
+    );
     return NextResponse.json(
-      { error: "Não foi possível criar sua conta agora." },
+      { error: message },
       { status: 500 },
     );
   }
