@@ -37,6 +37,7 @@ model User {
   updatedAt          DateTime            @updatedAt
   sessions           Session[]
   dashboardWorkspace DashboardWorkspace?
+  subscription       Subscription?
 }
 
 model Session {
@@ -47,4 +48,41 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Subscription {
+  id                     String              @id @default(cuid())
+  userId                 String              @unique
+  user                   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider               String              @default("mercadopago")
+  providerSubscriptionId String?             @unique
+  planId                 String
+  status                 String              @default("trialing")
+  accessStatus           String              @default("trialing")
+  currency               String              @default("BRL")
+  promoAmountCents       Int
+  regularAmountCents     Int
+  currentAmountCents     Int
+  trialEndsAt            DateTime?
+  promoEndsAt            DateTime?
+  accessEndsAt           DateTime?
+  nextBillingAt          DateTime?
+  startedAt              DateTime?
+  cancelledAt            DateTime?
+  paymentMethodId        String?
+  cardLastFour           String?
+  externalReference      String?             @unique
+  metadata               Json?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  events                 SubscriptionEvent[]
+}
+
+model SubscriptionEvent {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  type           String
+  payload        Json
+  createdAt      DateTime     @default(now())
 }

@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth";
 import { buildDashboardStateFromOnboarding } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
+import { addMonths } from "@/lib/subscription";
 import type { OnboardingData } from "@/types/onboarding";
 
 function validatePayload(data: OnboardingData) {
@@ -124,6 +125,24 @@ export async function POST(request: Request) {
         state: buildDashboardStateFromOnboarding(body),
       },
       where: {
+        userId: user.id,
+      },
+    });
+
+    await prisma.subscription.create({
+      data: {
+        accessEndsAt: trialEndsAt,
+        accessStatus: "trialing",
+        currentAmountCents: promoMonthlyPrice,
+        externalReference: `user:${user.id}`,
+        planId: selectedPlan,
+        promoAmountCents: promoMonthlyPrice,
+        promoEndsAt: addMonths(now, 2),
+        provider: "mercadopago",
+        regularAmountCents,
+        startedAt: now,
+        status: "trialing",
+        trialEndsAt,
         userId: user.id,
       },
     });

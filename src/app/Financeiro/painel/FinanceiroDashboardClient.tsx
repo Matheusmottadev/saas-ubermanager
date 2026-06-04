@@ -60,6 +60,7 @@ import {
   upcomingEvents,
 } from "./data";
 import RegisterModal, { type RegisterModalPayload } from "./RegisterModal";
+import PlanBillingPanel from "@/components/billing/PlanBillingPanel";
 import {
   createInitialDashboardState,
   createVehicleProfile,
@@ -74,7 +75,6 @@ import {
   type SettingsState,
   type VehicleProfile,
 } from "@/lib/dashboard-state";
-import { pricingPlans } from "@/lib/pricing";
 
 const SIDEBAR_STORAGE_KEY = "urbann-sidebar-collapsed";
 const FONT_STORAGE_KEY = "urbann-dashboard-display-font";
@@ -4472,17 +4472,7 @@ function ConfiguracoesPage(props: {
 
         {props.section === "plano" && (
           <SurfaceCard>
-            <SectionHeader subtitle="Seu acesso atual e opções de upgrade" title="Plano & cobrança" />
-            <div className="mt-6 grid gap-3 md:grid-cols-2">
-              {pricingPlans.map((plan) => (
-                <PlanCard
-                  key={plan.id}
-                  active={plan.id === "pro"}
-                  name={plan.name}
-                  price={plan.promoPrice}
-                />
-              ))}
-            </div>
+            <PlanBillingPanel />
           </SurfaceCard>
         )}
 
