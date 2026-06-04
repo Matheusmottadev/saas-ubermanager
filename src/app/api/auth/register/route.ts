@@ -139,7 +139,7 @@ export async function POST(request: Request) {
         promoAmountCents: promoMonthlyPrice,
         promoEndsAt: addMonths(now, 2),
         provider: "mercadopago",
-        regularAmountCents,
+        regularAmountCents: regularMonthlyPrice,
         startedAt: now,
         status: "trialing",
         trialEndsAt,

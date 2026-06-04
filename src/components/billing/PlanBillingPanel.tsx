@@ -5,7 +5,7 @@ import { Check, CircleAlert, CreditCard, Gift, ShieldCheck } from "lucide-react"
 import { useEffect, useMemo, useState } from "react";
 
 import { pricingPlans, type PricingPlanId } from "@/lib/pricing";
-import type { BillingSummary } from "@/lib/subscription";
+import { currencyStringToCents, type BillingSummary } from "@/lib/subscription";
 
 type Props = {
   title?: string;
@@ -81,6 +81,10 @@ export default function PlanBillingPanel({ title = "Plano & cobrança" }: Props)
   const selectedPlanMeta = useMemo(
     () => pricingPlans.find((plan) => plan.id === selectedPlan) ?? pricingPlans[0],
     [selectedPlan],
+  );
+  const selectedPlanPromoAmount = useMemo(
+    () => currencyStringToCents(selectedPlanMeta.promoPrice),
+    [selectedPlanMeta],
   );
 
   async function handleCancel() {
@@ -278,8 +282,9 @@ export default function PlanBillingPanel({ title = "Plano & cobrança" }: Props)
               <div className="mt-4">
                 {summary.publicKeyReady ? (
                   <CardPayment
+                    key={selectedPlan}
                     initialization={{
-                      amount: summary.promoAmountCents / 100,
+                      amount: selectedPlanPromoAmount / 100,
                       payer: {},
                     }}
                     customization={{
