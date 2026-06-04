@@ -96,12 +96,23 @@ export default function OnboardingPageClient() {
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (payment: {
+    cardLastFour?: string;
+    formData: {
+      payer?: {
+        email?: string;
+      };
+      payment_method_id?: string;
+      token?: string;
+    };
+  }) => {
     setSubmitting(true);
     setErrorMessage("");
 
     const payload = {
       ...data,
+      cardLastFour: payment.cardLastFour,
+      formData: payment.formData,
       goals: {
         ...data.goals,
         totalGoal: String(computeGoalsTotal(data.goals)),
@@ -120,15 +131,21 @@ export default function OnboardingPageClient() {
       const result = (await response.json()) as { error?: string };
 
       if (!response.ok) {
-        setErrorMessage(result.error ?? "Não foi possível criar a conta agora.");
-        return;
+        const message = result.error ?? "Não foi possível criar a conta agora.";
+        setErrorMessage(message);
+        throw new Error(message);
       }
 
       router.push("/Financeiro/painel");
       router.refresh();
     } catch (error) {
       console.error("onboarding register failed", error);
-      setErrorMessage("Não foi possível criar a conta agora.");
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Não foi possível criar a conta agora.";
+      setErrorMessage(message);
+      throw error;
     } finally {
       setSubmitting(false);
     }

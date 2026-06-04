@@ -1,18 +1,35 @@
 "use client";
 
+import { CardPayment, initMercadoPago } from "@mercadopago/sdk-react";
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { computeGoalsTotal } from "@/lib/onboarding";
-import { getPricingSummary } from "@/lib/pricing";
+import { getPricingPlan, getPricingSummary } from "@/lib/pricing";
+import { currencyStringToCents } from "@/lib/subscription";
 import type { OnboardingData } from "@/types/onboarding";
 
 interface Props {
   data: OnboardingData;
   errorMessage: string;
   onBack: () => void;
-  onSubmit: () => void;
+  onSubmit: (payment: {
+    cardLastFour?: string;
+    formData: {
+      payer?: {
+        email?: string;
+      };
+      payment_method_id?: string;
+      token?: string;
+    };
+  }) => Promise<void>;
   submitting: boolean;
+}
+
+const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
+
+if (publicKey) {
+  initMercadoPago(publicKey, { locale: "pt-BR" });
 }
 
 function Row(props: { label: string; value: string }) {
@@ -59,9 +76,11 @@ export default function StepConfirm({
   submitting,
 }: Props) {
   const pricingSummary = getPricingSummary(data.plan.selectedPlan);
+  const pricingPlan = getPricingPlan(data.plan.selectedPlan);
 
   const [mounted, setMounted] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const [brickError, setBrickError] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -169,6 +188,70 @@ export default function StepConfirm({
           value={pricingSummary.afterLabel}
         />
       </Section>
+
+      <Section className="xl:col-span-2" title="Cartão para ativar a assinatura">
+        <p style={{ color: "var(--s5)", fontSize: 12, lineHeight: 1.7, marginBottom: 14 }}>
+          Você continua com 7 dias grátis, mas já deixa o cartão validado para a cobrança começar automaticamente depois desse período.
+        </p>
+
+        {publicKey ? (
+          agreed ? (
+            <CardPayment
+              initialization={{
+                amount: currencyStringToCents(pricingPlan.promoPrice) / 100,
+                payer: {
+                  email: data.personal.email,
+                },
+              }}
+              customization={{
+                paymentMethods: {
+                  maxInstallments: 1,
+                  minInstallments: 1,
+                  types: {
+                    included: ["credit_card"],
+                  },
+                },
+                visual: {
+                  hideFormTitle: true,
+                  style: {
+                    theme: "dark",
+                  },
+                },
+              }}
+              onError={(error) => {
+                setBrickError(error.message || "Não foi possível carregar o formulário do cartão.");
+              }}
+              onReady={() => {
+                setBrickError("");
+              }}
+              onSubmit={(formData, additionalData) =>
+                onSubmit({
+                  cardLastFour: additionalData?.lastFourDigits,
+                  formData: formData as {
+                    payer?: {
+                      email?: string;
+                    };
+                    payment_method_id?: string;
+                    token?: string;
+                  },
+                })
+              }
+            />
+          ) : (
+            <p style={{ color: "var(--s5)", fontSize: 12 }}>
+              Aceite os termos abaixo para liberar o formulário do cartão.
+            </p>
+          )
+        ) : (
+          <p style={{ color: "#f0b36a", fontSize: 12 }}>
+            Configure a chave pública do Mercado Pago para mostrar o formulário do cartão.
+          </p>
+        )}
+
+        {brickError ? (
+          <p className="field-error mt-3">{brickError}</p>
+        ) : null}
+      </Section>
       </div>
 
       <div className={`flex items-start gap-3 mb-3 mt-5 ${mounted ? "anim-fadeUp d-200" : ""}`}>
@@ -210,36 +293,11 @@ export default function StepConfirm({
         </button>
         <button
           className="btn-primary flex-[2] justify-center"
-          disabled={!agreed || submitting}
-          onClick={onSubmit}
+          disabled
         >
-          {submitting ? (
-            <>
-              <span
-                style={{
-                  animation: "spin 0.7s linear infinite",
-                  border: "2px solid rgba(0,0,0,.2)",
-                  borderRadius: "50%",
-                  borderTopColor: "#000000",
-                  display: "inline-block",
-                  height: 14,
-                  width: 14,
-                }}
-              />
-              Criando conta...
-            </>
-          ) : (
-            <>
-              Criar conta
-              <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
-                <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.5" />
-              </svg>
-            </>
-          )}
+          {submitting ? "Validando cartão..." : "Finalize pelo formulário do cartão"}
         </button>
       </div>
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

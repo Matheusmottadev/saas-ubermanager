@@ -55,7 +55,12 @@ export function deriveAccessStatus(params: {
   trialEndsAt?: Date | null;
 }) {
   const now = new Date();
+  const trialEndsAt = params.trialEndsAt ?? null;
   const accessEndsAt = params.accessEndsAt ?? params.trialEndsAt ?? null;
+
+  if (trialEndsAt && trialEndsAt.getTime() > now.getTime()) {
+    return "trialing";
+  }
 
   if (accessEndsAt && accessEndsAt.getTime() > now.getTime()) {
     const providerStatus = params.providerStatus ?? "";

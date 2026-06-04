@@ -15,7 +15,7 @@ export type PricingPlan = {
 
 export const pricingPlans: PricingPlan[] = [
   {
-    badge: "Promo 2 meses",
+    badge: "Promoção válida por 2 meses",
     cta: "Assinar Essencial",
     description: "Controle essencial com tudo que o motorista precisa para operar no azul",
     featured: false,
