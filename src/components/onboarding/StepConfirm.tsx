@@ -1,35 +1,19 @@
 "use client";
 
-import { CardPayment, initMercadoPago } from "@mercadopago/sdk-react";
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { computeGoalsTotal } from "@/lib/onboarding";
-import { getPricingPlan, getPricingSummary } from "@/lib/pricing";
-import { currencyStringToCents } from "@/lib/subscription";
+import { getPricingSummary } from "@/lib/pricing";
 import type { OnboardingData } from "@/types/onboarding";
 
 interface Props {
   data: OnboardingData;
   errorMessage: string;
   onBack: () => void;
-  onSubmit: (payment: {
-    cardLastFour?: string;
-    formData: {
-      payer?: {
-        email?: string;
-      };
-      payment_method_id?: string;
-      token?: string;
-    };
-  }) => Promise<void>;
+  onSubmit: () => Promise<void>;
+  paymentReady: boolean;
   submitting: boolean;
-}
-
-const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
-
-if (publicKey) {
-  initMercadoPago(publicKey, { locale: "pt-BR" });
 }
 
 function Row(props: { label: string; value: string }) {
@@ -73,14 +57,13 @@ export default function StepConfirm({
   errorMessage,
   onBack,
   onSubmit,
+  paymentReady,
   submitting,
 }: Props) {
   const pricingSummary = getPricingSummary(data.plan.selectedPlan);
-  const pricingPlan = getPricingPlan(data.plan.selectedPlan);
 
   const [mounted, setMounted] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [brickError, setBrickError] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -189,68 +172,10 @@ export default function StepConfirm({
         />
       </Section>
 
-      <Section className="xl:col-span-2" title="Cartão para ativar a assinatura">
-        <p style={{ color: "var(--s5)", fontSize: 12, lineHeight: 1.7, marginBottom: 14 }}>
-          Você continua com 7 dias grátis, mas já deixa o cartão validado para a cobrança começar automaticamente depois desse período.
+      <Section className="xl:col-span-2" title="Cobrança">
+        <p style={{ color: "var(--s5)", fontSize: 12, lineHeight: 1.7 }}>
+          O cartão é informado na etapa do plano, dentro do layout do Urbann. A cobrança só começa depois dos 7 dias grátis.
         </p>
-
-        {publicKey ? (
-          agreed ? (
-            <CardPayment
-              initialization={{
-                amount: currencyStringToCents(pricingPlan.promoPrice) / 100,
-                payer: {
-                  email: data.personal.email,
-                },
-              }}
-              customization={{
-                paymentMethods: {
-                  maxInstallments: 1,
-                  minInstallments: 1,
-                  types: {
-                    included: ["credit_card"],
-                  },
-                },
-                visual: {
-                  hideFormTitle: true,
-                  style: {
-                    theme: "dark",
-                  },
-                },
-              }}
-              onError={(error) => {
-                setBrickError(error.message || "Não foi possível carregar o formulário do cartão.");
-              }}
-              onReady={() => {
-                setBrickError("");
-              }}
-              onSubmit={(formData, additionalData) =>
-                onSubmit({
-                  cardLastFour: additionalData?.lastFourDigits,
-                  formData: formData as {
-                    payer?: {
-                      email?: string;
-                    };
-                    payment_method_id?: string;
-                    token?: string;
-                  },
-                })
-              }
-            />
-          ) : (
-            <p style={{ color: "var(--s5)", fontSize: 12 }}>
-              Aceite os termos abaixo para liberar o formulário do cartão.
-            </p>
-          )
-        ) : (
-          <p style={{ color: "#f0b36a", fontSize: 12 }}>
-            Configure a chave pública do Mercado Pago para mostrar o formulário do cartão.
-          </p>
-        )}
-
-        {brickError ? (
-          <p className="field-error mt-3">{brickError}</p>
-        ) : null}
       </Section>
       </div>
 
@@ -293,9 +218,12 @@ export default function StepConfirm({
         </button>
         <button
           className="btn-primary flex-[2] justify-center"
-          disabled
+          disabled={!agreed || submitting || !paymentReady}
+          onClick={() => {
+            void onSubmit();
+          }}
         >
-          {submitting ? "Validando cartão..." : "Finalize pelo formulário do cartão"}
+          {submitting ? "Criando conta..." : "Criar conta"}
         </button>
       </div>
     </div>

@@ -44,6 +44,17 @@ export interface PlanData {
   selectedPlan: Plan;
 }
 
+export interface OnboardingPaymentData {
+  cardLastFour?: string;
+  formData: {
+    payer?: {
+      email?: string;
+    };
+    payment_method_id?: string;
+    token?: string;
+  };
+}
+
 export interface OnboardingData {
   personal: PersonalData;
   vehicle: VehicleData;
