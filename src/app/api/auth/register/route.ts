@@ -56,6 +56,10 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 export async function POST(request: Request) {
+  let createdUserId: string | null = null;
+  let referrerId: string | null = null;
+  let referrerBonusIncremented = false;
+
   try {
     const body = (await request.json()) as OnboardingData & {
       cardLastFour?: string;
@@ -108,6 +112,8 @@ export async function POST(request: Request) {
       );
     }
 
+    referrerId = referrer?.id ?? null;
+
     const now = new Date();
     const trialEndsAt = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 7);
     const promoPriceEndsAt = new Date(now);
@@ -143,6 +149,7 @@ export async function POST(request: Request) {
         trialEndsAt,
       },
     });
+    createdUserId = user.id;
 
     if (referrer) {
       await prisma.user.update({
@@ -153,6 +160,7 @@ export async function POST(request: Request) {
           },
         },
       });
+      referrerBonusIncremented = true;
     }
 
     await prisma.dashboardWorkspace.upsert({
@@ -239,33 +247,7 @@ export async function POST(request: Request) {
         "Não foi possível validar o cartão e criar a assinatura agora.",
       );
 
-      try {
-        if (referrer) {
-          await prisma.user.update({
-            where: {
-              id: referrer.id,
-            },
-            data: {
-              bonusFreeMonths: {
-                decrement: 1,
-              },
-            },
-          });
-        }
-
-        await prisma.user.delete({
-          where: {
-            id: user.id,
-          },
-        });
-      } catch (cleanupError) {
-        console.error("auth register cleanup failed", cleanupError);
-      }
-
-      return NextResponse.json(
-        { error: message },
-        { status: 500 },
-      );
+      throw new Error(message);
     }
 
     const session = await createUserSession(user.id);
@@ -289,6 +271,32 @@ export async function POST(request: Request) {
       error,
       "Não foi possível criar sua conta agora.",
     );
+
+    try {
+      if (referrerBonusIncremented && referrerId) {
+        await prisma.user.update({
+          where: {
+            id: referrerId,
+          },
+          data: {
+            bonusFreeMonths: {
+              decrement: 1,
+            },
+          },
+        });
+      }
+
+      if (createdUserId) {
+        await prisma.user.delete({
+          where: {
+            id: createdUserId,
+          },
+        });
+      }
+    } catch (cleanupError) {
+      console.error("auth register cleanup failed", cleanupError);
+    }
+
     return NextResponse.json(
       { error: message },
       { status: 500 },

@@ -52,16 +52,29 @@ function assertAccessToken() {
   }
 }
 
+function testScopeHeader() {
+  if (!accessToken) {
+    return {};
+  }
+
+  return accessToken.startsWith("TEST-")
+    ? { "X-scope": "stage" }
+    : {};
+}
+
 async function mercadoPagoFetch<T>(path: string, init: RequestInit = {}) {
   assertAccessToken();
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${accessToken}`);
+  headers.set("Content-Type", "application/json");
+
+  for (const [key, value] of Object.entries(testScopeHeader())) {
+    headers.set(key, value);
+  }
 
   const response = await fetch(`https://api.mercadopago.com${path}`, {
     ...init,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      ...(init.headers ?? {}),
-    },
+    headers,
   });
 
   if (!response.ok) {
