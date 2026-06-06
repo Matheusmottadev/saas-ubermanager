@@ -19,6 +19,9 @@ model DashboardWorkspace {
 model User {
   id                 String              @id @default(cuid())
   email              String              @unique
+  emailVerifiedAt    DateTime?
+  emailVerificationTokenHash String?     @unique
+  emailVerificationExpiresAt DateTime?
   phone              String?             @unique
   passwordHash       String
   firstName          String?

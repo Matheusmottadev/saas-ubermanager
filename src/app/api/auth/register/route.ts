@@ -9,6 +9,10 @@ import {
   normalizePhone,
   SESSION_COOKIE_NAME,
 } from "@/lib/auth";
+import {
+  issueEmailVerificationToken,
+  sendEmailConfirmationMessage,
+} from "@/lib/email-confirmation";
 import { buildDashboardStateFromOnboarding } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
 import {
@@ -255,6 +259,20 @@ export async function POST(request: Request) {
     });
 
     const session = await createUserSession(user.id);
+    try {
+      const { token } = await issueEmailVerificationToken(user.id);
+      const confirmUrl = new URL("/confirmar-email", request.url);
+      confirmUrl.searchParams.set("token", token);
+
+      await sendEmailConfirmationMessage({
+        confirmUrl: confirmUrl.toString(),
+        email: user.email,
+        firstName: user.firstName,
+      });
+    } catch (error) {
+      console.error("email confirmation send failed after register", error);
+    }
+
     const response = NextResponse.json({
       ok: true,
       user: {

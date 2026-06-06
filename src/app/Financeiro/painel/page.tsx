@@ -40,7 +40,13 @@ export default async function FinanceiroPainelPage() {
     <div
       className={`${syne.variable} ${sora.variable} ${spaceGrotesk.variable} ${bricolage.variable}`}
     >
-      <FinanceiroDashboardClient />
+      <FinanceiroDashboardClient
+        currentUser={{
+          email: user.email,
+          emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
+          firstName: user.firstName ?? null,
+        }}
+      />
     </div>
   );
 }

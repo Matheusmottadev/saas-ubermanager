@@ -124,6 +124,12 @@ type NotificationItem = {
   tone: "danger" | "neutral" | "success" | "warning";
 };
 
+type DashboardCurrentUser = {
+  email: string;
+  emailVerifiedAt: string | null;
+  firstName: string | null;
+};
+
 const expenseCategoryMeta: Record<
   ExpenseDraft["category"],
   { color: string; icon: string; label: string }
@@ -1008,7 +1014,7 @@ function readStoredFont() {
   return raw && raw in fontFamilyMap ? raw : "syne";
 }
 
-function FinanceiroDashboardClient() {
+function FinanceiroDashboardClient(props: { currentUser: DashboardCurrentUser }) {
   const router = useRouter();
   const initialDashboardState = createInitialDashboardState();
   const [currentPage, setCurrentPage] = useState<PageKey>("dashboard");
@@ -1039,6 +1045,8 @@ function FinanceiroDashboardClient() {
   const [seenNotificationKey, setSeenNotificationKey] = useState("");
   const [isStateLoaded, setIsStateLoaded] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isEmailVerified, setIsEmailVerified] = useState(Boolean(props.currentUser.emailVerifiedAt));
+  const [isResendingEmail, setIsResendingEmail] = useState(false);
 
   useEffect(() => {
     setSidebarCollapsed(window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true");
@@ -1047,6 +1055,37 @@ function FinanceiroDashboardClient() {
     setDraftFont(storedFont);
     setActivePlatforms(readStoredPlatforms());
   }, []);
+
+  async function handleResendConfirmationEmail() {
+    setIsResendingEmail(true);
+
+    try {
+      const response = await fetch("/api/auth/email-confirmation/resend", {
+        method: "POST",
+      });
+
+      const payload = (await response.json()) as {
+        alreadyVerified?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Não foi possível enviar o e-mail agora.");
+      }
+
+      if (payload.alreadyVerified) {
+        setIsEmailVerified(true);
+        setToastMessage("Seu e-mail já estava confirmado.");
+        return;
+      }
+
+      setToastMessage("Enviamos um novo e-mail de confirmação para você.");
+    } catch (error) {
+      setToastMessage(error instanceof Error ? error.message : "Não foi possível enviar o e-mail agora.");
+    } finally {
+      setIsResendingEmail(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -1815,6 +1854,52 @@ function FinanceiroDashboardClient() {
           </header>
 
           <div className="space-y-6 px-4 py-7 md:px-7">
+            {!isEmailVerified ? (
+              <section
+                className="flex flex-col gap-4 rounded-[28px] border px-5 py-5 md:flex-row md:items-center md:justify-between"
+                style={{
+                  background: "linear-gradient(180deg, rgba(18,18,18,.98) 0%, rgba(11,11,11,.98) 100%)",
+                  borderColor: "rgba(245,244,240,.08)",
+                }}
+              >
+                <div>
+                  <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[#7dd97a]">
+                    Confirmação pendente
+                  </div>
+                  <h2
+                    className="text-[24px] leading-none md:text-[28px]"
+                    style={{
+                      color: "var(--cream)",
+                      fontFamily: "var(--panel-font-display)",
+                      fontWeight: 700,
+                      letterSpacing: "-0.04em",
+                    }}
+                  >
+                    Confirme seu e-mail para concluir sua conta
+                  </h2>
+                  <p className="mt-3 max-w-[720px] text-sm leading-7 text-neutral-400">
+                    Mandamos um e-mail para <span className="font-semibold text-[#f5f4f0]">{props.currentUser.email}</span>.
+                    Assim que você confirmar, este lembrete some do painel automaticamente.
+                  </p>
+                </div>
+
+                <button
+                  className="inline-flex min-w-[190px] items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isResendingEmail}
+                  onClick={() => {
+                    void handleResendConfirmationEmail();
+                  }}
+                  style={{
+                    background: "var(--cream)",
+                    color: "#080808",
+                  }}
+                  type="button"
+                >
+                  {isResendingEmail ? "Enviando..." : "Confirme seu email"}
+                </button>
+              </section>
+            ) : null}
+
             {currentPage === "dashboard" && (
               <DashboardPage
                 dashboardFilter={dashboardFilter}
