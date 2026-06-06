@@ -361,7 +361,7 @@ function StripeCardSetupPanelInner(props: {
       <div className="mt-6 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs" style={{ color: "var(--s5)" }}>
           <LockKeyhole size={14} />
-          O cartão fica tokenizado pela Stripe
+          Seus dados de pagamento ficam protegidos em um ambiente seguro
         </div>
         {saving ? (
           <span className="text-xs font-semibold" style={{ color: "var(--cream)" }}>
