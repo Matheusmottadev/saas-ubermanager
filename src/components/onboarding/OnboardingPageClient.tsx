@@ -11,7 +11,7 @@ import StepPlan from "@/components/onboarding/StepPlan";
 import StepVehicle from "@/components/onboarding/StepVehicle";
 import { ONBOARDING_STEPS, computeGoalsTotal } from "@/lib/onboarding";
 import { getPricingSummary } from "@/lib/pricing";
-import type { OnboardingData } from "@/types/onboarding";
+import type { OnboardingData, OnboardingPaymentData } from "@/types/onboarding";
 
 const INITIAL_DATA: OnboardingData = {
   goals: {
@@ -64,6 +64,7 @@ export default function OnboardingPageClient() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [mounted, setMounted] = useState(false);
+  const [paymentData, setPaymentData] = useState<OnboardingPaymentData | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -106,6 +107,7 @@ export default function OnboardingPageClient() {
         ...data.goals,
         totalGoal: String(computeGoalsTotal(data.goals)),
       },
+      payment: paymentData,
     };
 
     try {
@@ -351,9 +353,13 @@ export default function OnboardingPageClient() {
               {currentStep.id === "plan" ? (
                 <StepPlan
                   data={data.plan}
+                  email={data.personal.email}
+                  fullName={`${data.personal.firstName} ${data.personal.lastName}`.trim()}
+                  payment={paymentData}
                   onBack={goBack}
                   onChange={(plan) => setData((current) => ({ ...current, plan }))}
                   onNext={goNext}
+                  onPaymentChange={setPaymentData}
                 />
               ) : null}
               {currentStep.id === "confirm" ? (
@@ -361,6 +367,7 @@ export default function OnboardingPageClient() {
                   data={data}
                   errorMessage={errorMessage}
                   onBack={goBack}
+                  payment={paymentData}
                   onSubmit={handleSubmit}
                   submitting={submitting}
                 />

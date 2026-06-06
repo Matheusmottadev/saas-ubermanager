@@ -3,17 +3,31 @@
 import { Check, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import StripeCardSetupPanel from "@/components/onboarding/StripeCardSetupPanel";
 import { pricingPlans } from "@/lib/pricing";
-import type { PlanData } from "@/types/onboarding";
+import type { OnboardingPaymentData, PlanData } from "@/types/onboarding";
 
 interface Props {
   data: PlanData;
+  email: string;
+  fullName: string;
+  payment: OnboardingPaymentData | null;
   onBack: () => void;
   onChange: (data: PlanData) => void;
   onNext: () => void;
+  onPaymentChange: (payment: OnboardingPaymentData | null) => void;
 }
 
-export default function StepPlan({ data, onBack, onChange, onNext }: Props) {
+export default function StepPlan({
+  data,
+  email,
+  fullName,
+  payment,
+  onBack,
+  onChange,
+  onNext,
+  onPaymentChange,
+}: Props) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -143,21 +157,22 @@ export default function StepPlan({ data, onBack, onChange, onNext }: Props) {
             7 dias gratis em qualquer plano
           </p>
           <p style={{ color: "var(--s5)", fontSize: 11, marginTop: 2 }}>
-            Sua conta entra com trial ativo e o checkout da Stripe sera ligado assim que as credenciais forem adicionadas.
+            Você já valida o cartão nesta etapa e a cobrança começa automaticamente depois do período gratuito.
           </p>
         </div>
       </div>
 
       <div
         className={`rounded-2xl px-4 py-4 mb-8 ${mounted ? "anim-fadeUp d-300" : ""}`}
-        style={{ background: "var(--s2)", border: "0.5px solid var(--s3)" }}
+        style={{ background: "transparent", border: "none", padding: 0 }}
       >
-        <p style={{ color: "var(--cream)", fontSize: 15, fontWeight: 700 }}>
-          Checkout Stripe em preparacao
-        </p>
-        <p style={{ color: "var(--s5)", fontSize: 12, lineHeight: 1.7, marginTop: 6 }}>
-          Esta etapa ja esta pronta para receber o checkout da Stripe sem mudar o restante do onboarding.
-        </p>
+        <StripeCardSetupPanel
+          email={email}
+          fullName={fullName}
+          initialPayment={payment}
+          onPaymentChange={onPaymentChange}
+          planId={data.selectedPlan}
+        />
       </div>
 
       <div className="flex gap-3">
@@ -167,8 +182,16 @@ export default function StepPlan({ data, onBack, onChange, onNext }: Props) {
           </svg>
           Voltar
         </button>
-        <button className="btn-primary flex-[2] justify-center" onClick={onNext}>
-          {data.selectedPlan === "pro" ? "Continuar com Pro" : "Continuar com Essencial"}
+        <button
+          className="btn-primary flex-[2] justify-center"
+          disabled={!payment}
+          onClick={onNext}
+        >
+          {payment
+            ? data.selectedPlan === "pro"
+              ? "Continuar com Pro"
+              : "Continuar com Essencial"
+            : "Valide o cartão para continuar"}
           <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
             <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.5" />
           </svg>

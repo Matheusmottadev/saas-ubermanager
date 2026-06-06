@@ -5,12 +5,13 @@ import { useEffect, useState } from "react";
 
 import { computeGoalsTotal } from "@/lib/onboarding";
 import { getPricingSummary } from "@/lib/pricing";
-import type { OnboardingData } from "@/types/onboarding";
+import type { OnboardingData, OnboardingPaymentData } from "@/types/onboarding";
 
 interface Props {
   data: OnboardingData;
   errorMessage: string;
   onBack: () => void;
+  payment: OnboardingPaymentData | null;
   onSubmit: () => Promise<void>;
   submitting: boolean;
 }
@@ -55,6 +56,7 @@ export default function StepConfirm({
   data,
   errorMessage,
   onBack,
+  payment,
   onSubmit,
   submitting,
 }: Props) {
@@ -171,9 +173,17 @@ export default function StepConfirm({
       </Section>
 
       <Section className="xl:col-span-2" title="Cobrança">
-        <p style={{ color: "var(--s5)", fontSize: 12, lineHeight: 1.7 }}>
-          Sua conta sera criada com trial ativo. Assim que a Stripe for conectada, esta etapa passa a confirmar tambem a cobranca automatica.
-        </p>
+        {payment ? (
+          <>
+            <Row label="Cartão validado" value={`${payment.cardBrand.toUpperCase()} •••• ${payment.cardLastFour}`} />
+            <Row label="Titular" value={payment.cardholderName} />
+            <Row label="CPF" value={payment.cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4")} />
+          </>
+        ) : (
+          <p style={{ color: "var(--s5)", fontSize: 12, lineHeight: 1.7 }}>
+            Volte para a etapa anterior e valide o cartão antes de criar a conta.
+          </p>
+        )}
       </Section>
       </div>
 
@@ -216,7 +226,7 @@ export default function StepConfirm({
         </button>
         <button
           className="btn-primary flex-[2] justify-center"
-          disabled={!agreed || submitting}
+          disabled={!agreed || submitting || !payment}
           onClick={() => {
             void onSubmit();
           }}

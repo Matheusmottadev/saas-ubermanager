@@ -11,8 +11,14 @@ import {
 } from "@/lib/auth";
 import { buildDashboardStateFromOnboarding } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
+import {
+  getOrCreatePlanProduct,
+  getOrCreatePromoCoupon,
+  getOrCreateRecurringPrice,
+  getStripeServerClient,
+} from "@/lib/stripe";
 import { addMonths } from "@/lib/subscription";
-import type { OnboardingData } from "@/types/onboarding";
+import type { OnboardingData, OnboardingPaymentData } from "@/types/onboarding";
 
 function validatePayload(data: OnboardingData) {
   const fullNameOk =
@@ -40,9 +46,13 @@ export async function POST(request: Request) {
   let createdUserId: string | null = null;
   let referrerId: string | null = null;
   let referrerBonusIncremented = false;
+  let stripeCustomerId: string | null = null;
+  let stripeSubscriptionId: string | null = null;
 
   try {
-    const body = (await request.json()) as OnboardingData;
+    const body = (await request.json()) as OnboardingData & {
+      payment?: OnboardingPaymentData | null;
+    };
 
     if (!validatePayload(body)) {
       return NextResponse.json(
@@ -100,6 +110,14 @@ export async function POST(request: Request) {
     const selectedPlan = body.plan.selectedPlan;
     const promoMonthlyPrice = selectedPlan === "pro" ? 2490 : 1490;
     const regularMonthlyPrice = selectedPlan === "pro" ? 2990 : 1990;
+    const payment = body.payment;
+
+    if (!payment?.paymentMethodId || !payment.cardLastFour || !payment.cardholderName) {
+      return NextResponse.json(
+        { error: "Valide o cartão antes de continuar." },
+        { status: 400 },
+      );
+    }
 
     const user = await prisma.user.create({
       data: {
@@ -114,7 +132,7 @@ export async function POST(request: Request) {
         selectedPlan,
         promoMonthlyPrice,
         regularMonthlyPrice,
-        promoPriceEndsAt,
+        promoPriceEndsAt: addMonths(trialEndsAt, 2),
         trialEndsAt,
       },
     });
@@ -145,19 +163,92 @@ export async function POST(request: Request) {
       },
     });
 
+    const stripe = getStripeServerClient();
+    const stripeCustomer = await stripe.customers.create({
+      email,
+      metadata: {
+        cpf: payment.cpf,
+        externalReference: `user:${user.id}`,
+        planId: selectedPlan,
+      },
+      name: `${body.personal.firstName.trim()} ${body.personal.lastName.trim()}`.trim(),
+      phone,
+    });
+    stripeCustomerId = stripeCustomer.id;
+
+    await stripe.paymentMethods.attach(payment.paymentMethodId, {
+      customer: stripeCustomer.id,
+    });
+
+    await stripe.customers.update(stripeCustomer.id, {
+      invoice_settings: {
+        default_payment_method: payment.paymentMethodId,
+      },
+      metadata: {
+        cpf: payment.cpf,
+        externalReference: `user:${user.id}`,
+        planId: selectedPlan,
+      },
+      name: payment.cardholderName,
+    });
+
+    const product = await getOrCreatePlanProduct(stripe, selectedPlan);
+    const price = await getOrCreateRecurringPrice(stripe, {
+      amountCents: regularMonthlyPrice,
+      planId: selectedPlan,
+      productId: product.id,
+    });
+    const promoCoupon = await getOrCreatePromoCoupon(stripe);
+    const remoteSubscription = await stripe.subscriptions.create({
+      customer: stripeCustomer.id,
+      default_payment_method: payment.paymentMethodId,
+      discounts: [
+        {
+          coupon: promoCoupon.id,
+        },
+      ],
+      items: [
+        {
+          price: price.id,
+        },
+      ],
+      metadata: {
+        cpf: payment.cpf,
+        externalReference: `user:${user.id}`,
+        planId: selectedPlan,
+      },
+      trial_end: Math.floor(trialEndsAt.getTime() / 1000),
+      trial_settings: {
+        end_behavior: {
+          missing_payment_method: "cancel",
+        },
+      },
+    });
+    stripeSubscriptionId = remoteSubscription.id;
+
     await prisma.subscription.create({
       data: {
         accessEndsAt: trialEndsAt,
         accessStatus: "trialing",
+        cardLastFour: payment.cardLastFour,
         currentAmountCents: promoMonthlyPrice,
         externalReference: `user:${user.id}`,
+        metadata: {
+          cpf: payment.cpf,
+          stripeCouponId: promoCoupon.id,
+          stripeCustomerId: stripeCustomer.id,
+          stripePriceId: price.id,
+        },
+        nextBillingAt: trialEndsAt,
+        paymentMethodId: payment.paymentMethodId,
         planId: selectedPlan,
         promoAmountCents: promoMonthlyPrice,
-        promoEndsAt: addMonths(now, 2),
+        promoEndsAt: addMonths(trialEndsAt, 2),
         provider: "stripe",
+        providerSubscriptionId: remoteSubscription.id,
         regularAmountCents: regularMonthlyPrice,
         startedAt: now,
-        status: "trialing",
+        status: remoteSubscription.status,
         trialEndsAt,
         userId: user.id,
       },
@@ -186,6 +277,16 @@ export async function POST(request: Request) {
     );
 
     try {
+      if (stripeSubscriptionId) {
+        const stripe = getStripeServerClient();
+        await stripe.subscriptions.cancel(stripeSubscriptionId);
+      }
+
+      if (stripeCustomerId) {
+        const stripe = getStripeServerClient();
+        await stripe.customers.del(stripeCustomerId);
+      }
+
       if (referrerBonusIncremented && referrerId) {
         await prisma.user.update({
           where: {
