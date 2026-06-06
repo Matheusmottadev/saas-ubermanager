@@ -1,9 +1,9 @@
 "use client";
 
 import { Check, Shield } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import StripeCardSetupPanel from "@/components/onboarding/StripeCardSetupPanel";
+import StripeCardSetupPanel, { type StripeCardSetupPanelHandle } from "@/components/onboarding/StripeCardSetupPanel";
 import { pricingPlans } from "@/lib/pricing";
 import type { OnboardingPaymentData, PlanData } from "@/types/onboarding";
 
@@ -29,10 +29,30 @@ export default function StepPlan({
   onPaymentChange,
 }: Props) {
   const [mounted, setMounted] = useState(false);
+  const [validatingCard, setValidatingCard] = useState(false);
+  const [cardPanelBusy, setCardPanelBusy] = useState(false);
+  const cardPanelRef = useRef<StripeCardSetupPanelHandle | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  async function handleContinue() {
+    if (!cardPanelRef.current || cardPanelBusy) {
+      return;
+    }
+
+    setValidatingCard(true);
+
+    try {
+      const isValid = await cardPanelRef.current.validateCard();
+      if (isValid) {
+        onNext();
+      }
+    } finally {
+      setValidatingCard(false);
+    }
+  }
 
   return (
     <div>
@@ -170,8 +190,10 @@ export default function StepPlan({
           email={email}
           fullName={fullName}
           initialPayment={payment}
+          onProcessingChange={setCardPanelBusy}
           onPaymentChange={onPaymentChange}
           planId={data.selectedPlan}
+          ref={cardPanelRef}
         />
       </div>
 
@@ -184,14 +206,16 @@ export default function StepPlan({
         </button>
         <button
           className="btn-primary flex-[2] justify-center"
-          disabled={!payment}
-          onClick={onNext}
+          disabled={cardPanelBusy || validatingCard}
+          onClick={() => {
+            void handleContinue();
+          }}
         >
-          {payment
-            ? data.selectedPlan === "pro"
+          {validatingCard
+            ? "Validando cartão..."
+            : data.selectedPlan === "pro"
               ? "Continuar com Pro"
-              : "Continuar com Essencial"
-            : "Valide o cartão para continuar"}
+              : "Continuar com Essencial"}
           <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
             <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.5" />
           </svg>

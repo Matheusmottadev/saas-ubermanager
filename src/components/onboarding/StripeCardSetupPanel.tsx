@@ -10,7 +10,7 @@ import {
 } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { AlertCircle, CheckCircle2, CreditCard, LockKeyhole } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, type ForwardedRef, useEffect, useImperativeHandle, useMemo, useState } from "react";
 
 import type { OnboardingPaymentData, Plan } from "@/types/onboarding";
 
@@ -26,7 +26,7 @@ const elementOptions = {
       },
       color: "#f5f4f0",
       fontFamily: "var(--font-body), sans-serif",
-      fontSize: "18px",
+      fontSize: "15px",
       iconColor: "#f5f4f0",
     },
     invalid: {
@@ -56,7 +56,7 @@ function CardField(props: {
         {props.label}
       </span>
       <div
-        className="rounded-2xl px-4 py-4"
+        className="rounded-[18px] px-4 py-3"
         style={{
           background: "rgba(255,255,255,.03)",
           border: "0.5px solid rgba(255,255,255,.08)",
@@ -68,13 +68,18 @@ function CardField(props: {
   );
 }
 
+export interface StripeCardSetupPanelHandle {
+  validateCard: () => Promise<boolean>;
+}
+
 function StripeCardSetupPanelInner(props: {
   email: string;
   fullName: string;
   initialPayment: OnboardingPaymentData | null;
+  onProcessingChange?: (processing: boolean) => void;
   onPaymentChange: (payment: OnboardingPaymentData | null) => void;
   planId: Plan;
-}) {
+}, ref: ForwardedRef<StripeCardSetupPanelHandle>) {
   const stripe = useStripe();
   const elements = useElements();
   const [clientSecret, setClientSecret] = useState("");
@@ -90,6 +95,10 @@ function StripeCardSetupPanelInner(props: {
   useEffect(() => {
     setCardholderName((current) => current || props.fullName);
   }, [props.fullName]);
+
+  useEffect(() => {
+    props.onProcessingChange?.(loadingIntent || saving);
+  }, [loadingIntent, props, saving]);
 
   useEffect(() => {
     async function createSetupIntent() {
@@ -127,6 +136,11 @@ function StripeCardSetupPanelInner(props: {
     void createSetupIntent();
   }, [props.planId]);
 
+  useEffect(() => {
+    props.onPaymentChange(null);
+    setSuccessLabel("");
+  }, [props.planId]);
+
   const cardSummary = useMemo(() => {
     if (!props.initialPayment) {
       return null;
@@ -136,9 +150,17 @@ function StripeCardSetupPanelInner(props: {
   }, [props.initialPayment]);
 
   async function handleSaveCard() {
+    if (
+      props.initialPayment &&
+      props.initialPayment.cardholderName === cardholderName.trim() &&
+      props.initialPayment.cpf === cpf.replace(/\D/g, "")
+    ) {
+      return true;
+    }
+
     if (!stripe || !elements) {
       setErrorMessage("A Stripe ainda está carregando. Tente novamente em alguns segundos.");
-      return;
+      return false;
     }
 
     const name = cardholderName.trim();
@@ -147,17 +169,17 @@ function StripeCardSetupPanelInner(props: {
 
     if (!clientSecret || !numberElement) {
       setErrorMessage("Não foi possível preparar o cartão.");
-      return;
+      return false;
     }
 
     if (name.length < 3) {
       setErrorMessage("Informe o nome do titular como aparece no cartão.");
-      return;
+      return false;
     }
 
     if (cpfDigits.length !== 11) {
       setErrorMessage("Informe um CPF válido para continuar.");
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -196,22 +218,28 @@ function StripeCardSetupPanelInner(props: {
 
       props.onPaymentChange(payment);
       setSuccessLabel(`Cartão validado •••• ${payment.cardLastFour}`);
+      return true;
     } catch (error) {
       props.onPaymentChange(null);
       setSuccessLabel("");
       setErrorMessage(error instanceof Error ? error.message : "Não foi possível validar o cartão.");
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
+  useImperativeHandle(ref, () => ({
+    validateCard: handleSaveCard,
+  }));
+
   return (
     <div
       className="rounded-[28px] p-5"
       style={{
-        background: "linear-gradient(180deg, rgba(12,18,35,.96) 0%, rgba(15,20,38,.96) 100%)",
-        border: "0.5px solid rgba(125,217,122,.14)",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)",
+        background: "rgba(6,6,8,.96)",
+        border: "0.5px solid rgba(255,255,255,.08)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,.03)",
       }}
     >
       <div className="mb-5 flex items-start justify-between gap-4">
@@ -224,10 +252,10 @@ function StripeCardSetupPanelInner(props: {
           </p>
         </div>
         <div
-          className="flex h-12 w-12 items-center justify-center rounded-2xl"
-          style={{ background: "rgba(125,217,122,.08)", color: "#7dd97a" }}
+          className="flex h-11 w-11 items-center justify-center rounded-2xl"
+          style={{ background: "rgba(255,255,255,.04)", color: "#7dd97a" }}
         >
-          <CreditCard size={20} />
+          <CreditCard size={18} />
         </div>
       </div>
 
@@ -264,7 +292,7 @@ function StripeCardSetupPanelInner(props: {
               Nome no cartão
             </span>
             <input
-              className="w-full rounded-2xl px-4 py-4 text-base outline-none"
+              className="w-full rounded-[18px] px-4 py-3 text-[15px] outline-none"
               style={{
                 background: "rgba(255,255,255,.03)",
                 border: "0.5px solid rgba(255,255,255,.08)",
@@ -281,7 +309,7 @@ function StripeCardSetupPanelInner(props: {
               CPF do titular
             </span>
             <input
-              className="w-full rounded-2xl px-4 py-4 text-base outline-none"
+              className="w-full rounded-[18px] px-4 py-3 text-[15px] outline-none"
               style={{
                 background: "rgba(255,255,255,.03)",
                 border: "0.5px solid rgba(255,255,255,.08)",
@@ -335,29 +363,27 @@ function StripeCardSetupPanelInner(props: {
           <LockKeyhole size={14} />
           O cartão fica tokenizado pela Stripe
         </div>
-        <button
-          className="rounded-2xl px-5 py-3 text-sm font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-          style={{ background: "var(--cream)" }}
-          disabled={!stripe || loadingIntent || saving}
-          onClick={() => {
-            void handleSaveCard();
-          }}
-          type="button"
-        >
-          {saving ? "Validando cartão..." : props.initialPayment ? "Trocar cartão" : "Validar cartão"}
-        </button>
+        {saving ? (
+          <span className="text-xs font-semibold" style={{ color: "var(--cream)" }}>
+            Validando cartão...
+          </span>
+        ) : null}
       </div>
     </div>
   );
 }
 
-export default function StripeCardSetupPanel(props: {
+const StripeCardSetupPanelInnerWithRef = forwardRef(StripeCardSetupPanelInner);
+StripeCardSetupPanelInnerWithRef.displayName = "StripeCardSetupPanelInner";
+
+const StripeCardSetupPanel = forwardRef<StripeCardSetupPanelHandle, {
   email: string;
   fullName: string;
   initialPayment: OnboardingPaymentData | null;
+  onProcessingChange?: (processing: boolean) => void;
   onPaymentChange: (payment: OnboardingPaymentData | null) => void;
   planId: Plan;
-}) {
+}>((props, ref) => {
   if (!stripePromise) {
     return (
       <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-200">
@@ -368,7 +394,11 @@ export default function StripeCardSetupPanel(props: {
 
   return (
     <Elements stripe={stripePromise}>
-      <StripeCardSetupPanelInner {...props} />
+      <StripeCardSetupPanelInnerWithRef {...props} ref={ref} />
     </Elements>
   );
-}
+});
+
+StripeCardSetupPanel.displayName = "StripeCardSetupPanel";
+
+export default StripeCardSetupPanel;
