@@ -12,7 +12,6 @@ interface Props {
   errorMessage: string;
   onBack: () => void;
   onSubmit: () => Promise<void>;
-  paymentReady: boolean;
   submitting: boolean;
 }
 
@@ -57,7 +56,6 @@ export default function StepConfirm({
   errorMessage,
   onBack,
   onSubmit,
-  paymentReady,
   submitting,
 }: Props) {
   const pricingSummary = getPricingSummary(data.plan.selectedPlan);
@@ -174,7 +172,7 @@ export default function StepConfirm({
 
       <Section className="xl:col-span-2" title="Cobrança">
         <p style={{ color: "var(--s5)", fontSize: 12, lineHeight: 1.7 }}>
-          O cartão é informado na etapa do plano, dentro do layout do Urbann. A cobrança só começa depois dos 7 dias grátis.
+          Sua conta sera criada com trial ativo. Assim que a Stripe for conectada, esta etapa passa a confirmar tambem a cobranca automatica.
         </p>
       </Section>
       </div>
@@ -218,7 +216,7 @@ export default function StepConfirm({
         </button>
         <button
           className="btn-primary flex-[2] justify-center"
-          disabled={!agreed || submitting || !paymentReady}
+          disabled={!agreed || submitting}
           onClick={() => {
             void onSubmit();
           }}

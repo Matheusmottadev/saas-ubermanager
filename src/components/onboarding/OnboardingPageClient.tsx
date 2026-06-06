@@ -11,7 +11,7 @@ import StepPlan from "@/components/onboarding/StepPlan";
 import StepVehicle from "@/components/onboarding/StepVehicle";
 import { ONBOARDING_STEPS, computeGoalsTotal } from "@/lib/onboarding";
 import { getPricingSummary } from "@/lib/pricing";
-import type { OnboardingData, OnboardingPaymentData } from "@/types/onboarding";
+import type { OnboardingData } from "@/types/onboarding";
 
 const INITIAL_DATA: OnboardingData = {
   goals: {
@@ -64,7 +64,6 @@ export default function OnboardingPageClient() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [mounted, setMounted] = useState(false);
-  const [paymentData, setPaymentData] = useState<OnboardingPaymentData | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -101,17 +100,8 @@ export default function OnboardingPageClient() {
     setSubmitting(true);
     setErrorMessage("");
 
-    if (!paymentData?.formData?.token) {
-      const message = "Valide os dados do cartão na etapa do plano antes de continuar.";
-      setErrorMessage(message);
-      setSubmitting(false);
-      throw new Error(message);
-    }
-
     const payload = {
       ...data,
-      cardLastFour: paymentData.cardLastFour,
-      formData: paymentData.formData,
       goals: {
         ...data.goals,
         totalGoal: String(computeGoalsTotal(data.goals)),
@@ -361,16 +351,9 @@ export default function OnboardingPageClient() {
               {currentStep.id === "plan" ? (
                 <StepPlan
                   data={data.plan}
-                  email={data.personal.email}
-                  errorMessage={errorMessage}
                   onBack={goBack}
                   onChange={(plan) => setData((current) => ({ ...current, plan }))}
                   onNext={goNext}
-                  onPaymentChange={(payment) => {
-                    setPaymentData(payment);
-                    setErrorMessage("");
-                  }}
-                  submitting={submitting}
                 />
               ) : null}
               {currentStep.id === "confirm" ? (
@@ -379,7 +362,6 @@ export default function OnboardingPageClient() {
                   errorMessage={errorMessage}
                   onBack={goBack}
                   onSubmit={handleSubmit}
-                  paymentReady={Boolean(paymentData?.formData?.token)}
                   submitting={submitting}
                 />
               ) : null}

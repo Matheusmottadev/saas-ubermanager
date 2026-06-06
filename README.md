@@ -8,7 +8,7 @@
 npm install
 ```
 
-2. Crie o arquivo `.env.local` a partir de `.env.example` e preencha as chaves do Mercado Pago.
+2. Crie o arquivo `.env.local` a partir de `.env.example` e preencha as chaves do Stripe quando for integrar a cobrança.
 
 3. Suba o Postgres local:
 
@@ -43,27 +43,15 @@ npm run db:down
 ## O que precisa para a assinatura funcionar
 
 - `DATABASE_URL` apontando para um Postgres acessivel.
-- `MERCADO_PAGO_ACCESS_TOKEN` configurado.
-- `MERCADO_PAGO_PUBLIC_KEY` configurado.
-- `NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY` configurado.
+- `STRIPE_SECRET_KEY` configurado.
+- `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` configurado.
+- `STRIPE_WEBHOOK_SECRET` configurado.
 - Usuario logado no sistema.
 - Schema do Prisma aplicado no banco.
 
-## Webhook do Mercado Pago
+## Stripe
 
-O fluxo de assinatura usa a rota:
-
-```text
-/api/mercadopago/subscription/webhook
-```
-
-Em localhost, o Mercado Pago nao consegue chamar essa URL diretamente. Para testar webhooks localmente, exponha sua aplicacao com uma URL publica temporaria, por exemplo com `ngrok`, e cadastre essa URL no painel do Mercado Pago.
-
-Exemplo de webhook em producao:
-
-```text
-https://seu-dominio.com/api/mercadopago/subscription/webhook
-```
+O fluxo de cobranca do site foi preparado para Stripe. A proxima etapa sera conectar o checkout e o webhook com as credenciais do ambiente.
 
 ## Checklist de deploy
 
@@ -71,4 +59,4 @@ https://seu-dominio.com/api/mercadopago/subscription/webhook
 - Variaveis de ambiente configuradas.
 - `prisma db push` ou migrations aplicadas no ambiente publicado.
 - URL publica do app funcionando.
-- Webhook do Mercado Pago apontando para a URL publicada.
+- Webhook da Stripe apontando para a URL publicada quando a integracao for concluida.

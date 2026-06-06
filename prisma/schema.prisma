@@ -54,7 +54,7 @@ model Subscription {
   id                     String              @id @default(cuid())
   userId                 String              @unique
   user                   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider               String              @default("mercadopago")
+  provider               String              @default("stripe")
   providerSubscriptionId String?             @unique
   planId                 String
   status                 String              @default("trialing")

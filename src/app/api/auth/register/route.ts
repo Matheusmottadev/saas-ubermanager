@@ -9,29 +9,10 @@ import {
   normalizePhone,
   SESSION_COOKIE_NAME,
 } from "@/lib/auth";
-import { createMercadoPagoSubscription } from "@/lib/mercadopago-subscriptions";
 import { buildDashboardStateFromOnboarding } from "@/lib/onboarding";
-import { getPricingPlan } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
-import { addMonths, deriveAccessStatus } from "@/lib/subscription";
+import { addMonths } from "@/lib/subscription";
 import type { OnboardingData } from "@/types/onboarding";
-
-type CardBrickPayload = {
-  payer?: {
-    email?: string;
-  };
-  payment_method_id?: string;
-  token?: string;
-};
-
-function toIsoOrNull(value?: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
 
 function validatePayload(data: OnboardingData) {
   const fullNameOk =
@@ -61,10 +42,7 @@ export async function POST(request: Request) {
   let referrerBonusIncremented = false;
 
   try {
-    const body = (await request.json()) as OnboardingData & {
-      cardLastFour?: string;
-      formData?: CardBrickPayload;
-    };
+    const body = (await request.json()) as OnboardingData;
 
     if (!validatePayload(body)) {
       return NextResponse.json(
@@ -122,15 +100,6 @@ export async function POST(request: Request) {
     const selectedPlan = body.plan.selectedPlan;
     const promoMonthlyPrice = selectedPlan === "pro" ? 2490 : 1490;
     const regularMonthlyPrice = selectedPlan === "pro" ? 2990 : 1990;
-    const token = body.formData?.token?.trim();
-    const payerEmail = body.formData?.payer?.email?.trim() || email;
-
-    if (!token) {
-      return NextResponse.json(
-        { error: "Informe um cartão válido para ativar o período grátis." },
-        { status: 400 },
-      );
-    }
 
     const user = await prisma.user.create({
       data: {
@@ -176,7 +145,7 @@ export async function POST(request: Request) {
       },
     });
 
-    const subscription = await prisma.subscription.create({
+    await prisma.subscription.create({
       data: {
         accessEndsAt: trialEndsAt,
         accessStatus: "trialing",
@@ -185,7 +154,7 @@ export async function POST(request: Request) {
         planId: selectedPlan,
         promoAmountCents: promoMonthlyPrice,
         promoEndsAt: addMonths(now, 2),
-        provider: "mercadopago",
+        provider: "stripe",
         regularAmountCents: regularMonthlyPrice,
         startedAt: now,
         status: "trialing",
@@ -193,62 +162,6 @@ export async function POST(request: Request) {
         userId: user.id,
       },
     });
-
-    try {
-      const startDate = addMonths(trialEndsAt, user.bonusFreeMonths).toISOString();
-      const remote = await createMercadoPagoSubscription({
-        amount: promoMonthlyPrice / 100,
-        backUrl: `${new URL(request.url).origin}/Financeiro/painel?billing=success`,
-        cardToken: token,
-        externalReference: `user:${user.id}`,
-        payerEmail,
-        planId: selectedPlan,
-        reason: `Urbann ${getPricingPlan(selectedPlan).name}`,
-        startDate,
-      });
-
-      const providerStatus = remote.status ?? "authorized";
-      const nextBillingAt =
-        toIsoOrNull(remote.auto_recurring?.next_payment_date) ??
-        toIsoOrNull(remote.auto_recurring?.start_date) ??
-        addMonths(trialEndsAt, user.bonusFreeMonths);
-      const accessStatus = deriveAccessStatus({
-        accessEndsAt: trialEndsAt,
-        providerStatus,
-        trialEndsAt,
-      });
-
-      await prisma.subscription.update({
-        data: {
-          accessEndsAt: trialEndsAt,
-          accessStatus,
-          cardLastFour: body.cardLastFour ?? null,
-          nextBillingAt,
-          paymentMethodId: body.formData?.payment_method_id ?? remote.payment_method_id ?? null,
-          providerSubscriptionId: remote.id ?? null,
-          status: providerStatus,
-        },
-        where: {
-          userId: user.id,
-        },
-      });
-
-      await prisma.subscriptionEvent.create({
-        data: {
-          payload: JSON.parse(JSON.stringify(remote)) as object,
-          subscriptionId: subscription.id,
-          type: "subscription.created",
-        },
-      });
-    } catch (error) {
-      console.error("auth register subscription failed", error);
-      const message = toErrorMessage(
-        error,
-        "Não foi possível validar o cartão e criar a assinatura agora.",
-      );
-
-      throw new Error(message);
-    }
 
     const session = await createUserSession(user.id);
     const response = NextResponse.json({

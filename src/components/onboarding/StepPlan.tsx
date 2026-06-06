@@ -1,34 +1,20 @@
 "use client";
 
-import { CardPayment, initMercadoPago } from "@mercadopago/sdk-react";
-import { Check } from "lucide-react";
+import { Check, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { getPricingPlan, pricingPlans } from "@/lib/pricing";
-import { currencyStringToCents } from "@/lib/subscription";
-import type { OnboardingPaymentData, PlanData } from "@/types/onboarding";
+import { pricingPlans } from "@/lib/pricing";
+import type { PlanData } from "@/types/onboarding";
 
 interface Props {
   data: PlanData;
-  email: string;
-  errorMessage: string;
   onBack: () => void;
   onChange: (data: PlanData) => void;
   onNext: () => void;
-  onPaymentChange: (payment: OnboardingPaymentData) => void;
-  submitting: boolean;
 }
 
-const publicKey = process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY;
-
-if (publicKey) {
-  initMercadoPago(publicKey, { locale: "pt-BR" });
-}
-
-export default function StepPlan({ data, email, errorMessage, onBack, onChange, onNext, onPaymentChange, submitting }: Props) {
+export default function StepPlan({ data, onBack, onChange, onNext }: Props) {
   const [mounted, setMounted] = useState(false);
-  const [brickError, setBrickError] = useState("");
-  const selectedPlan = getPricingPlan(data.selectedPlan);
 
   useEffect(() => {
     setMounted(true);
@@ -59,10 +45,7 @@ export default function StepPlan({ data, email, errorMessage, onBack, onChange, 
           ))}
         </div>
         <p style={{ color: "var(--s5)", fontSize: 12 }}>
-          <span style={{ color: "var(--cream)", fontWeight: 600 }}>
-            +3.400 motoristas
-          </span>{" "}
-          já usam o Urbann Pro
+          <span style={{ color: "var(--cream)", fontWeight: 600 }}>+3.400 motoristas</span> ja usam o Urbann Pro
         </p>
       </div>
 
@@ -154,15 +137,13 @@ export default function StepPlan({ data, email, errorMessage, onBack, onChange, 
           border: "0.5px solid rgba(76,175,80,.2)",
         }}
       >
-        <svg fill="none" height="16" viewBox="0 0 24 24" width="16" style={{ flexShrink: 0, marginTop: 2 }}>
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="#4CAF50" strokeWidth="2" />
-        </svg>
+        <Shield size={16} style={{ color: "#4CAF50", flexShrink: 0, marginTop: 2 }} />
         <div>
           <p style={{ color: "var(--cream)", fontSize: 13, fontWeight: 600 }}>
-            7 dias grátis em qualquer plano
+            7 dias gratis em qualquer plano
           </p>
           <p style={{ color: "var(--s5)", fontSize: 11, marginTop: 2 }}>
-            Novos usuários pagam o valor promocional por 2 meses. Depois disso, o plano volta ao valor normal.
+            Sua conta entra com trial ativo e o checkout da Stripe sera ligado assim que as credenciais forem adicionadas.
           </p>
         </div>
       </div>
@@ -171,73 +152,26 @@ export default function StepPlan({ data, email, errorMessage, onBack, onChange, 
         className={`rounded-2xl px-4 py-4 mb-8 ${mounted ? "anim-fadeUp d-300" : ""}`}
         style={{ background: "var(--s2)", border: "0.5px solid var(--s3)" }}
       >
-        <div className="mb-4">
-          <p style={{ color: "var(--cream)", fontSize: 15, fontWeight: 700 }}>
-            Cartão para ativar sua assinatura
-          </p>
-          <p style={{ color: "var(--s5)", fontSize: 12, lineHeight: 1.7, marginTop: 6 }}>
-            Você continua com 7 dias grátis, mas já deixa o cartão validado nesta etapa para a cobrança começar automaticamente depois do período gratuito.
-          </p>
-        </div>
-
-        {publicKey ? (
-          <CardPayment
-            key={data.selectedPlan}
-            initialization={{
-              amount: currencyStringToCents(selectedPlan.promoPrice) / 100,
-              payer: {
-                email,
-              },
-            }}
-            customization={{
-              paymentMethods: {
-                maxInstallments: 1,
-                minInstallments: 1,
-                types: {
-                  included: ["credit_card"],
-                },
-              },
-              visual: {
-                hideFormTitle: true,
-                style: {
-                  theme: "dark",
-                },
-              },
-            }}
-            onError={(error) => {
-              setBrickError(error.message || "Não foi possível carregar o formulário do cartão.");
-            }}
-            onReady={() => {
-              setBrickError("");
-            }}
-            onSubmit={(formData, additionalData) => {
-              onPaymentChange({
-                cardLastFour: additionalData?.lastFourDigits,
-                formData: formData as OnboardingPaymentData["formData"],
-              });
-              onNext();
-              return Promise.resolve();
-            }}
-          />
-        ) : (
-          <p style={{ color: "#f0b36a", fontSize: 12 }}>
-            Configure a chave pública do Mercado Pago para mostrar o formulário do cartão.
-          </p>
-        )}
-
-        {brickError ? <p className="field-error mt-3">{brickError}</p> : null}
-        {errorMessage ? <p className="field-error mt-3">{errorMessage}</p> : null}
+        <p style={{ color: "var(--cream)", fontSize: 15, fontWeight: 700 }}>
+          Checkout Stripe em preparacao
+        </p>
+        <p style={{ color: "var(--s5)", fontSize: 12, lineHeight: 1.7, marginTop: 6 }}>
+          Esta etapa ja esta pronta para receber o checkout da Stripe sem mudar o restante do onboarding.
+        </p>
       </div>
 
       <div className="flex gap-3">
-        <button className="btn-ghost flex-1 justify-center" disabled={submitting} onClick={onBack}>
+        <button className="btn-ghost flex-1 justify-center" onClick={onBack}>
           <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
             <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" strokeWidth="2.5" />
           </svg>
           Voltar
         </button>
-        <button className="btn-primary flex-[2] justify-center" disabled>
-          Preencha o cartão acima para continuar
+        <button className="btn-primary flex-[2] justify-center" onClick={onNext}>
+          {data.selectedPlan === "pro" ? "Continuar com Pro" : "Continuar com Essencial"}
+          <svg fill="none" height="16" viewBox="0 0 24 24" width="16">
+            <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2.5" />
+          </svg>
         </button>
       </div>
     </div>

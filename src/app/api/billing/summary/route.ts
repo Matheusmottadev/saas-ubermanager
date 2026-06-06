@@ -87,7 +87,7 @@ export async function GET() {
       promoAmountCents: user.subscription.promoAmountCents,
       promoEndsAt: user.subscription.promoEndsAt?.toISOString() ?? null,
       providerStatus: user.subscription.status,
-      publicKeyReady: Boolean(process.env.NEXT_PUBLIC_MERCADO_PAGO_PUBLIC_KEY),
+      publicKeyReady: Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY),
       referralCode: user.referralCode,
       regularAmountCents: user.subscription.regularAmountCents,
       startedAt: user.subscription.startedAt?.toISOString() ?? null,
